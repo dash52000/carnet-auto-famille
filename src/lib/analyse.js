@@ -355,3 +355,72 @@ export function analyserPV(texteBrut, garages = []) {
     date_limite: contreVisite ? limite : '',
   })
 }
+
+/* ------------------- bouton « J'ai un papier » ------------------- */
+
+/** Sorte de papier : contrôle technique, attestation d'assurance ou facture (null si on ne sait pas). */
+export function sorteDePapier(texteBrut) {
+  const t = normaliser(texteBrut)
+  const points = {
+    ct: (t.match(/CONTROLE TECHNIQUE|PROCES.?VERBAL|CONTRE.?VISITE|DEFAILLANCES?\s+(?:MAJEURE|MINEURE|CRITIQUE)|CENTRE DE CONTROLE/g) || []).length * 2,
+    assurance: (t.match(/ATTESTATION D.?ASSURANCE|CARTE VERTE|MEMO VEHICULE|VEHICULE ASSURE|SOUSCRIPTEUR|CERTIFICAT INTERNATIONAL|PERIODE DE VALIDITE|RESPONSABILITE CIVILE/g) || []).length * 2,
+    facture: (t.match(/FACTURE|NET A PAYER|TOTAL\s*T\.?T\.?C|MAIN D.?OEUVRE|\bHT\b|\bTVA\b/g) || []).length,
+  }
+  const [sorte, score] = Object.entries(points).sort((a, b) => b[1] - a[1])[0]
+  return score > 0 ? sorte : null
+}
+
+// mots-clés → type d'intervention (le premier trouvé gagne : du plus spécifique au plus général)
+const MOTS_INTERVENTION = [
+  ['courroie', /DISTRIBUTION/],
+  ['revision', /REVISION|ENTRETIEN (?:CONSTRUCTEUR|PERIODIQUE|ANNUEL)|FORFAIT ENTRETIEN|PLAN D.?ENTRETIEN/],
+  ['plaquettes_av', /PLAQUETTES?[^\n]{0,30}(?:\bAV\b|AVANT)|(?:\bAV\b|AVANT)[^\n]{0,15}PLAQUETTES?/],
+  ['plaquettes_ar', /PLAQUETTES?[^\n]{0,30}(?:\bAR\b|ARRIERE)|(?:\bAR\b|ARRIERE)[^\n]{0,15}PLAQUETTES?/],
+  ['disques_av', /DISQUES?[^\n]{0,30}(?:\bAV\b|AVANT)/],
+  ['disques_ar', /DISQUES?[^\n]{0,30}(?:\bAR\b|ARRIERE)/],
+  ['vidange', /VIDANGE|HUILE MOTEUR/],
+  ['batterie', /BATTERIE/],
+  ['pneus', /PNEUMATIQUE|\bPNEUS?\b/],
+  ['essuie_glaces', /BALAIS?\b|ESSUIE.?GLACE/],
+  ['filtres', /FILTRE/],
+]
+
+export function typeIntervention(texteBrut) {
+  const t = normaliser(texteBrut)
+  return MOTS_INTERVENTION.find(([, re]) => re.test(t))?.[0] ?? null
+}
+
+/** Voiture de la famille dont la plaque figure sur le papier (null sinon). */
+export function voitureDuPapier(texteBrut, voitures = []) {
+  const t = normaliser(texteBrut)
+  const compact = t.replace(/[^A-Z0-9]/g, '')
+  // l'OCR confond souvent O/0 et I/1 : on compare en remplaçant les deux côtés
+  const flou = (s) => s.replace(/O/g, '0').replace(/[IL]/g, '1')
+  const plaqueLue = plaqueDe(t)
+  for (const v of voitures) {
+    const p = (v.plaque || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+    if (p.length < 5) continue
+    if (compact.includes(p) || flou(compact).includes(flou(p)) || (plaqueLue && plaqueLue.replace(/-/g, '') === p)) return v
+  }
+  return null
+}
+
+/**
+ * Tout ce qu'on peut tirer d'un papier quelconque : sorte, voiture, type d'intervention et champs lus.
+ * Renvoie aussi `sur` = true quand on peut se contenter d'une confirmation en une ligne.
+ */
+export function analyserPapier(texteBrut, { garages = [], voitures = [], sorte: sorteImposee = null } = {}) {
+  const sorte = sorteImposee ?? sorteDePapier(texteBrut)
+  const voiture = voitureDuPapier(texteBrut, voitures)
+  let champs = {}
+  let type = null
+  if (sorte === 'assurance') champs = analyserAttestation(texteBrut)
+  else if (sorte === 'ct') {
+    champs = analyserPV(texteBrut, garages)
+    type = 'controle_technique'
+  } else if (sorte === 'facture') {
+    champs = analyserFacture(texteBrut, garages)
+    type = typeIntervention(texteBrut)
+  }
+  return { sorte, vehicle_id: voiture?.id ?? null, type, champs }
+}

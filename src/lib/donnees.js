@@ -7,7 +7,7 @@ const CLE_CACHE = 'carnet-auto-cache-v1'
 export async function chargerVoitures() {
   const [voitures, events, jeux, releves] = await Promise.all([
     q(supabase.from('vehicles').select('*').order('created_at')),
-    q(supabase.from('events').select('id, vehicle_id, type, date, km, date_approx, km_approx').order('date', { ascending: false })),
+    q(supabase.from('events').select('id, vehicle_id, type, date, km, date_approx, km_approx, created_at').order('date', { ascending: false })),
     q(supabase.from('tyre_sets').select('*')),
     q(supabase.from('mileage_readings').select('vehicle_id, km, date').order('date', { ascending: false })),
   ])

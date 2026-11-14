@@ -6,6 +6,8 @@ import { envoyerFichier } from '../lib/images.js'
 import { IL_Y_A, TYPES_INTERVENTION } from '../lib/constantes.js'
 import { aujourdhui, fmtDate, ilYa } from '../lib/format.js'
 import { analyserFacture, analyserPV } from '../lib/analyse.js'
+import { rangerDocument } from '../lib/papiers.js'
+import { lienFichier } from '../lib/images.js'
 import LecturePapier, { classeLu } from '../components/LecturePapier.jsx'
 import { Bouton, Carte, Champ, Chargement, Erreur, Input, classeInput } from '../components/ui.jsx'
 
@@ -64,6 +66,7 @@ export default function Ajout() {
             </button>
           )}
         </div>
+        {params.get('document') && <p className="text-sm text-slate-600">Papier à trier : choisis ce qui a été fait.</p>}
         <div className="grid grid-cols-3 gap-3">
           {TYPES_INTERVENTION.map((t) => (
             <button
@@ -79,10 +82,10 @@ export default function Ajout() {
       </div>
     )
 
-  return <FormIntervention voiture={voiture} type={type} onRetour={() => setType(null)} />
+  return <FormIntervention voiture={voiture} type={type} documentId={params.get('document')} onRetour={() => setType(null)} />
 }
 
-function FormIntervention({ voiture, type, onRetour }) {
+function FormIntervention({ voiture, type, documentId, onRetour }) {
   const navigate = useNavigate()
   const [garages, setGarages] = useState([])
   const [f, setF] = useState({
@@ -102,6 +105,37 @@ function FormIntervention({ voiture, type, onRetour }) {
   const [contreVisite, setContreVisite] = useState(null) // date limite lue sur le PV
   const [envoi, setEnvoi] = useState(false)
   const [erreur, setErreur] = useState(null)
+  const [papier, setPapier] = useState(null) // papier venant de la pile « À trier »
+
+  // papier déposé avec « J'ai un papier » : on reprend ce qui a été lu
+  useEffect(() => {
+    if (!documentId) return
+    supabase
+      .from('documents')
+      .select('*')
+      .eq('id', documentId)
+      .single()
+      .then(async ({ data }) => {
+        if (!data) return
+        const { sorte, type: _t, contre_visite, date_limite, ...valeurs } = data.lecture ?? {} // eslint-disable-line no-unused-vars
+        setF((s) => ({
+          ...s,
+          ...valeurs,
+          ...(valeurs.date ? { date_approx: false } : {}),
+          ...(valeurs.km ? { km_approx: false } : {}),
+          note: contre_visite && date_limite ? `Contre-visite à faire avant le ${fmtDate(date_limite)}` : s.note,
+        }))
+        setLus(valeurs)
+        setContreVisite(contre_visite && date_limite ? date_limite : null)
+        let lien = null
+        try {
+          lien = await lienFichier(data.fichier_path)
+        } catch {
+          /* aperçu indisponible */
+        }
+        setPapier({ ...data, lien })
+      })
+  }, [documentId])
 
   useEffect(() => {
     chargerGarages().then(setGarages).catch(() => {})
@@ -144,6 +178,7 @@ function FormIntervention({ voiture, type, onRetour }) {
         garage_id: f.garage_id || null,
         libelle: f.libelle || null,
         note: f.note || null,
+        ...(papier?.auteur_id ? { auteur_id: papier.auteur_id } : {}), // au nom de celui qui a déposé le papier
       }
       // une info exacte remplace l'approximation donnée plus tôt (« il y a ~1 an »)
       const remplacee =
@@ -157,7 +192,15 @@ function FormIntervention({ voiture, type, onRetour }) {
       const eventId = remplacee?.id ?? crypto.randomUUID()
       if (remplacee) await q(supabase.from('events').update(champs).eq('id', eventId))
       else await q(supabase.from('events').insert({ id: eventId, ...champs }))
-      if (facture) {
+      if (papier) {
+        const ct = type.code === 'controle_technique'
+        await rangerDocument(papier.id, {
+          vehicle_id: voiture.id,
+          event_id: eventId,
+          type: ct ? 'controle_technique' : 'facture',
+          nom: ct ? 'PV de contrôle technique' : `Facture ${type.label}`,
+        })
+      } else if (facture) {
         const chemin = await envoyerFichier(voiture.id, facture)
         const ct = type.code === 'controle_technique'
         await q(
@@ -189,7 +232,7 @@ function FormIntervention({ voiture, type, onRetour }) {
         if (existantes.length) await q(supabase.from('parts').update(champs).eq('id', existantes[0].id))
         else await q(supabase.from('parts').insert({ vehicle_id: voiture.id, categorie, position, ...champs }))
       }
-      navigate(`/voiture/${voiture.id}?onglet=historique`, { replace: true })
+      navigate(papier ? '/a-trier' : `/voiture/${voiture.id}?onglet=historique`, { replace: true })
     } catch (err) {
       setErreur(err.message)
       setEnvoi(false)
@@ -207,6 +250,16 @@ function FormIntervention({ voiture, type, onRetour }) {
         </h2>
       </div>
 
+      {papier ? (
+        <a href={papier.lien ?? undefined} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-xl bg-slate-100 p-3 text-sm">
+          {papier.lien && !papier.fichier_path.endsWith('.pdf') ? (
+            <img src={papier.lien} alt="" className="h-16 w-14 rounded-lg object-cover" />
+          ) : (
+            <span className="text-3xl">📄</span>
+          )}
+          <span>Papier déposé {papier.lecture && Object.keys(lus).length ? '(infos lues en vert)' : ''} · toucher pour l’agrandir</span>
+        </a>
+      ) : (
       <LecturePapier
         label={type.code === 'controle_technique' ? 'Photo du PV de contrôle' : 'Photo de la facture'}
         aide="Ou le PDF : date, km, montant et garage se remplissent"
@@ -226,6 +279,7 @@ function FormIntervention({ voiture, type, onRetour }) {
           setContreVisite(contre_visite && date_limite ? date_limite : null)
         }}
       />
+      )}
 
       <Carte className="space-y-3">
         {type.code === 'autre' && (

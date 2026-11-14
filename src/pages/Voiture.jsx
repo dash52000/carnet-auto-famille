@@ -33,7 +33,7 @@ async function chargerVoiture(id) {
     q(supabase.from('tyre_sets').select('*').eq('vehicle_id', id).order('created_at')),
     q(supabase.from('mileage_readings').select('*').eq('vehicle_id', id).order('date', { ascending: false })),
     q(supabase.from('parts').select('*').eq('vehicle_id', id)),
-    q(supabase.from('documents').select('*').eq('vehicle_id', id).order('created_at', { ascending: false })),
+    q(supabase.from('documents').select('*').eq('vehicle_id', id).eq('a_trier', false).order('created_at', { ascending: false })),
     q(supabase.from('vehicle_members').select('user_id, profil:profiles(id, prenom, email)').eq('vehicle_id', id)),
   ])
   memoriserPourPanne(voiture, voiture.garage)

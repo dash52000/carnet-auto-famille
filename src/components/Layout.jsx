@@ -10,7 +10,7 @@ const ONGLETS = [
 export default function Layout() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
-  const masquerPlus = pathname.startsWith('/ajout') || pathname.endsWith('/modifier') || pathname.endsWith('/nouvelle')
+  const masquerPlus = pathname.startsWith('/ajout') || pathname.startsWith('/papier') || pathname.endsWith('/modifier') || pathname.endsWith('/nouvelle')
   const idVoiture = pathname.match(/^\/voiture\/([0-9a-f-]{36})$/)?.[1]
 
   return (

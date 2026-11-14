@@ -1,5 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
+import { useAuth } from '../lib/auth.jsx'
+import { chargerRetours, marquerVu, nombreATrier, texteRetour } from '../lib/papiers.js'
+import InviteInstallation from '../components/InviteInstallation.jsx'
 import { supabase } from '../lib/supabase.js'
 import { chargerVoitures } from '../lib/donnees.js'
 import { trierParUrgence, pireStatut } from '../lib/echeances.js'
@@ -10,6 +13,19 @@ import QuestionRapide from '../components/QuestionRapide.jsx'
 export default function Accueil() {
   const { data: voitures, erreur, chargement, recharger } = useCharger(chargerVoitures)
   const [voirArchives, setVoirArchives] = useState(false)
+  const { profil } = useAuth()
+  const [retours, setRetours] = useState([])
+  const [aTrier, setATrier] = useState(0)
+
+  useEffect(() => {
+    chargerRetours(profil.id).then(setRetours).catch(() => {})
+    if (profil.est_admin) nombreATrier().then(setATrier).catch(() => {})
+  }, [profil.id, profil.est_admin])
+
+  const vu = (id) => {
+    setRetours((r) => r.filter((d) => d.id !== id))
+    marquerVu(id).catch(() => {})
+  }
 
   if (chargement) return <Chargement />
   const actives = voitures?.filter((v) => !v.archivee) ?? []
@@ -23,6 +39,32 @@ export default function Accueil() {
   return (
     <div className="space-y-6">
       <Erreur message={erreur} />
+
+      {retours.map((d) => (
+        <button key={d.id} onClick={() => vu(d.id)} className="flex w-full items-start gap-3 rounded-2xl bg-emerald-50 p-4 text-left">
+          <span className="text-xl text-emerald-700">✓</span>
+          <span className="flex-1 text-emerald-900">{texteRetour(d)} Merci !</span>
+          <span className="text-sm text-emerald-700">✕</span>
+        </button>
+      ))}
+
+      <Link
+        to="/papier"
+        className="flex items-center gap-4 rounded-2xl bg-slate-900 px-5 py-4 text-white shadow-sm active:bg-slate-700"
+      >
+        <span className="text-3xl">📷</span>
+        <span className="flex-1">
+          <span className="block text-lg font-semibold">J'ai un papier</span>
+          <span className="block text-sm text-slate-300">Facture, contrôle technique, assurance : une photo suffit</span>
+        </span>
+      </Link>
+
+      {aTrier > 0 && (
+        <Link to="/a-trier" className="flex items-center justify-between rounded-2xl bg-amber-50 px-4 py-3 font-medium text-amber-900">
+          <span>📥 {aTrier} papier{aTrier > 1 ? 's' : ''} à trier</span>
+          <span>›</span>
+        </Link>
+      )}
 
       {voitures && <QuestionRapide voitures={voitures} recharger={recharger} />}
 
@@ -70,6 +112,8 @@ export default function Accueil() {
           ))}
         </div>
       </section>
+
+      <InviteInstallation />
 
       {archives.length > 0 && (
         <section>

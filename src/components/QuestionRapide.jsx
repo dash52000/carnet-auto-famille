@@ -4,6 +4,8 @@ import { supabase, q } from '../lib/supabase.js'
 import { chargerGarages } from '../lib/donnees.js'
 import { IL_Y_A, SAISONS } from '../lib/constantes.js'
 import { aujourdhui, ajouterJours, ilYa, joursAvant, ajouterMois } from '../lib/format.js'
+import { saisonCible } from '../lib/echeances.js'
+import { passerALaSaison } from '../lib/pneus.js'
 import { Carte } from './ui.jsx'
 
 // Une seule question à la fois sur l'accueil, réponse en 1 tap.
@@ -41,7 +43,25 @@ export function questionsEnAttente(voitures, garages = []) {
     liste.push({ id, cle, voiture: v })
   }
   const actives = voitures.filter((v) => !v.archivee)
+  const enRetard = (v, cle) => v.echeances?.some((e) => e.cle === cle && e.statut === 'retard')
+  // pas juste après l'avoir saisie (« ~2 ans » met la révision en retard tout de suite)
+  const saisieAncienne = (v, type) => {
+    const e = v.events.find((x) => x.type === type)
+    return !e || !e.created_at || joursAvant(e.created_at) < -7
+  }
   const ordre = [
+    // une alerte rouge se règle en 1 tap : « c'est fait ? »
+    ['fait_revision', (v) => enRetard(v, 'revision') && saisieAncienne(v, 'revision')],
+    ['fait_ct', (v) => enRetard(v, 'ct') && saisieAncienne(v, 'controle_technique')],
+    ['fait_assurance', (v) => enRetard(v, 'assurance')],
+    // période des pneus été / hiver
+    [
+      'saison',
+      (v) => {
+        const monte = v.jeux.find((j) => j.statut === 'monte')
+        return v.alterne_saisons && monte && monte.saison !== '4saisons' && monte.saison !== saisonCible()
+      },
+    ],
     ['km', (v) => v.km_actuel == null],
     ['revision', (v) => !v.events.some((e) => e.type === 'revision')],
     [
@@ -127,8 +147,8 @@ export default function QuestionRapide({ voitures, recharger }) {
   const jeNeSaisPas = () =>
     repondre(() => q(supabase.from('vehicles').update({ inconnus: [...new Set([...(v.inconnus ?? []), qn.cle])] }).eq('id', v.id)))
 
-  function plusTard() {
-    ecrire(CLE_REPORTS, { ...lire(CLE_REPORTS, {}), [qn.id]: ajouterJours(aujourdhui(), 7) })
+  function plusTard(jours = 7) {
+    ecrire(CLE_REPORTS, { ...lire(CLE_REPORTS, {}), [qn.id]: ajouterJours(aujourdhui(), jours) })
     setSaisie('')
     setEtat('question')
     recharger() // la question suivante prend la place
@@ -141,9 +161,83 @@ export default function QuestionRapide({ voitures, recharger }) {
 
   const bouton = 'rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium active:bg-slate-100 disabled:opacity-50'
 
+  // « c'est fait ? » et saison : les réponses sont dans les boutons, pas de « je ne sais pas »
+  const sansPied = qn.cle.startsWith('fait_') || qn.cle === 'saison'
+  const boutonPrincipal = 'rounded-xl bg-slate-900 px-3 py-2.5 text-sm font-medium text-white active:bg-slate-700 disabled:opacity-50'
+
   let titre
   let corps
   switch (qn.cle) {
+    case 'fait_revision':
+    case 'fait_ct': {
+      const type = qn.cle === 'fait_ct' ? 'controle_technique' : 'revision'
+      titre = qn.cle === 'fait_ct' ? `Le contrôle technique de la ${nom(v)}, c’est fait ?` : `La révision de la ${nom(v)}, c’est faite ?`
+      corps = (
+        <div className="grid grid-cols-2 gap-2">
+          <button disabled={envoi} onClick={() => navigate(`/papier?voiture=${v.id}&type=${type}`)} className={boutonPrincipal}>
+            📷 Oui, j’ai le papier
+          </button>
+          <button
+            disabled={envoi}
+            onClick={() =>
+              repondre(async () => {
+                await q(supabase.from('events').insert({ vehicle_id: v.id, type, date: aujourdhui(), date_approx: true, note: 'Réponse rapide : c’est fait' }))
+                if (type === 'controle_technique') await q(supabase.from('vehicles').update({ prochain_ct: null }).eq('id', v.id))
+              })
+            }
+            className={bouton}
+          >
+            Oui, sans papier
+          </button>
+          <button disabled={envoi} onClick={() => plusTard(14)} className={`${bouton} col-span-2`}>
+            Pas encore
+          </button>
+        </div>
+      )
+      break
+    }
+    case 'fait_assurance':
+      titre = `L’assurance de la ${nom(v)} a été renouvelée ?`
+      corps = (
+        <div className="grid grid-cols-2 gap-2">
+          <button disabled={envoi} onClick={() => navigate(`/papier?voiture=${v.id}&sorte=assurance`)} className={boutonPrincipal}>
+            📷 Nouvelle attestation
+          </button>
+          <button
+            disabled={envoi}
+            onClick={() =>
+              repondre(async () => {
+                let echeance = v.echeance_assurance
+                while (joursAvant(echeance) < 0) echeance = ajouterMois(echeance, 12)
+                await q(supabase.from('vehicles').update({ echeance_assurance: echeance }).eq('id', v.id))
+                await info(v.id, 'a indiqué que l’assurance est renouvelée')
+              })
+            }
+            className={bouton}
+          >
+            Oui, reconduite
+          </button>
+          <button disabled={envoi} onClick={() => plusTard(14)} className={`${bouton} col-span-2`}>
+            Pas encore
+          </button>
+        </div>
+      )
+      break
+    case 'saison': {
+      const cible = saisonCible()
+      titre = `Pneus ${cible === 'hiver' ? 'hiver' : 'été'} montés sur la ${nom(v)} ?`
+      corps = (
+        <div className="grid grid-cols-2 gap-2">
+          <button disabled={envoi} onClick={() => repondre(() => passerALaSaison(v, v.jeux, cible))} className={boutonPrincipal}>
+            {cible === 'hiver' ? '❄️' : '☀️'} Oui, c’est fait
+          </button>
+          <button disabled={envoi} onClick={() => plusTard(7)} className={bouton}>
+            Pas encore
+          </button>
+        </div>
+      )
+      break
+    }
     case 'km':
       titre = `Combien de km au compteur de la ${nom(v)}\u00a0?`
       corps = (
@@ -300,14 +394,14 @@ export default function QuestionRapide({ voitures, recharger }) {
       </div>
       {corps}
       {erreur && <p className="text-sm text-red-700">{erreur}</p>}
-      <div className="flex gap-4 text-sm">
+      {!sansPied && <div className="flex gap-4 text-sm">
         <button disabled={envoi} onClick={jeNeSaisPas} className="font-medium text-slate-700">
           Je ne sais pas
         </button>
-        <button disabled={envoi} onClick={plusTard} className="text-slate-500">
+        <button disabled={envoi} onClick={() => plusTard()} className="text-slate-500">
           Plus tard
         </button>
-      </div>
+      </div>}
     </Carte>
   )
 }

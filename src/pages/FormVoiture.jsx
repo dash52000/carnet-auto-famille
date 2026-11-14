@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { supabase, q } from '../lib/supabase.js'
 import { chargerGarages, creerVoiture } from '../lib/donnees.js'
-import { envoyerFichier } from '../lib/images.js'
+import { envoyerFichier, lienFichier } from '../lib/images.js'
+import { rangerDocument } from '../lib/papiers.js'
 import { dernierMoteur, lireTexte } from '../lib/ocr.js'
 import { analyserAttestation, analyserCarteGrise } from '../lib/analyse.js'
 import LecturePapier, { classeLu } from '../components/LecturePapier.jsx'
@@ -252,6 +253,8 @@ function EditionVoiture({ id }) {
   const [erreur, setErreur] = useState(null)
   const [attestation, setAttestation] = useState(null)
   const [lus, setLus] = useState({})
+  const [papier, setPapier] = useState(null) // attestation venant de la pile « À trier »
+  const documentId = params.get('document')
 
   useEffect(() => {
     chargerGarages().then(setGarages).catch(() => {})
@@ -264,8 +267,29 @@ function EditionVoiture({ id }) {
         if (error) setErreur(error.message)
         else setV(Object.fromEntries(Object.keys(VIDE).map((k) => [k, data[k] ?? VIDE[k]])))
         setChargement(false)
+        if (documentId)
+          supabase
+            .from('documents')
+            .select('*')
+            .eq('id', documentId)
+            .single()
+            .then(async ({ data: doc }) => {
+              if (!doc) return
+              const lu = Object.fromEntries(
+                ['assureur', 'numero_contrat', 'echeance_assurance', 'tel_assistance'].filter((k) => doc.lecture?.[k]).map((k) => [k, doc.lecture[k]]),
+              )
+              setV((s) => ({ ...s, ...lu }))
+              setLus(lu)
+              let lien = null
+              try {
+                lien = await lienFichier(doc.fichier_path)
+              } catch {
+                /* aperçu indisponible */
+              }
+              setPapier({ ...doc, lien })
+            })
       })
-  }, [id])
+  }, [id, documentId])
 
   const maj = (champ) => (e) => setV({ ...v, [champ]: e.target.type === 'checkbox' ? e.target.checked : e.target.value })
   const voir = (s) => !section || section === s
@@ -276,11 +300,12 @@ function EditionVoiture({ id }) {
     setEnvoi(true)
     try {
       await q(supabase.from('vehicles').update(preparerChamps(v)).eq('id', id))
-      if (attestation) {
+      if (papier) await rangerDocument(papier.id, { vehicle_id: id, type: 'assurance', nom: 'Attestation d’assurance' })
+      else if (attestation) {
         const chemin = await envoyerFichier(id, attestation)
         await q(supabase.from('documents').insert({ vehicle_id: id, type: 'assurance', fichier_path: chemin, nom: 'Attestation d’assurance' }))
       }
-      navigate(`/voiture/${id}`, { replace: true })
+      navigate(papier ? '/a-trier' : `/voiture/${id}`, { replace: true })
     } catch (err) {
       setErreur(err.message)
       setEnvoi(false)
@@ -346,16 +371,27 @@ function EditionVoiture({ id }) {
       {voir('assurance') && (
         <Carte className="space-y-3">
           {!section && <h3 className="font-semibold">Assurance</h3>}
-          <LecturePapier
-            label="Attestation d’assurance"
-            aide="Photo, ou le PDF reçu par mail : tout se remplit"
-            analyser={analyserAttestation}
-            onLu={(fichier, champs) => {
-              setAttestation(fichier)
-              setV((s) => ({ ...s, ...champs }))
-              setLus(champs)
-            }}
-          />
+          {papier ? (
+            <a href={papier.lien ?? undefined} target="_blank" rel="noreferrer" className="flex items-center gap-3 rounded-xl bg-slate-100 p-3 text-sm">
+              {papier.lien && !papier.fichier_path.endsWith('.pdf') ? (
+                <img src={papier.lien} alt="" className="h-16 w-14 rounded-lg object-cover" />
+              ) : (
+                <span className="text-3xl">📄</span>
+              )}
+              <span>Attestation déposée · toucher pour l’agrandir</span>
+            </a>
+          ) : (
+            <LecturePapier
+              label="Attestation d’assurance"
+              aide="Photo, ou le PDF reçu par mail : tout se remplit"
+              analyser={analyserAttestation}
+              onLu={(fichier, champs) => {
+                setAttestation(fichier)
+                setV((s) => ({ ...s, ...champs }))
+                setLus(champs)
+              }}
+            />
+          )}
           <Champ label="Assureur">
             <Input value={v.assureur} onChange={maj('assureur')} className={classeLu(lus, 'assureur')} />
           </Champ>

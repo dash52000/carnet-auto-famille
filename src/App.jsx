@@ -12,6 +12,8 @@ import Box from './pages/Box.jsx'
 import Garages from './pages/Garages.jsx'
 import Reglages from './pages/Reglages.jsx'
 import Panne from './pages/Panne.jsx'
+import Papier from './pages/Papier.jsx'
+import ATrier from './pages/ATrier.jsx'
 
 export default function App() {
   const { session, profil } = useAuth()
@@ -31,6 +33,8 @@ export default function App() {
         <Route path="/voiture/:id" element={<Voiture />} />
         <Route path="/voiture/:id/modifier" element={<FormVoiture />} />
         <Route path="/ajout" element={<Ajout />} />
+        <Route path="/papier" element={<Papier />} />
+        <Route path="/a-trier" element={<ATrier />} />
         <Route path="/box" element={<Box />} />
         <Route path="/garages" element={<Garages />} />
         <Route path="/reglages" element={<Reglages />} />
