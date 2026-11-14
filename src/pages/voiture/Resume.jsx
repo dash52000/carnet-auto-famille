@@ -41,11 +41,11 @@ function aCompleter(v, events) {
   const ageAns = v.date_1re_immat ? (Date.now() - new Date(v.date_1re_immat)) / (365.25 * 86400000) : null
 
   if (!events.some((e) => e.type === 'revision'))
-    liste.push({ icone: '🔧', label: 'Dernière révision', detail: 'Pour calculer la prochaine', to: ajout('revision') })
+    liste.push({ icone: '🔧', label: 'Dernière révision', detail: 'Une photo de la facture suffit', to: ajout('revision') })
   if (!events.some((e) => e.type === 'controle_technique') && !v.prochain_ct && (ageAns == null || ageAns >= 4))
-    liste.push({ icone: '📋', label: 'Dernier contrôle technique', detail: 'Pour calculer le prochain', to: ajout('controle_technique') })
+    liste.push({ icone: '📋', label: 'Dernier contrôle technique', detail: 'Une photo du PV suffit', to: ajout('controle_technique') })
   if (!v.assureur || !v.echeance_assurance)
-    liste.push({ icone: '🛡️', label: 'Assurance', detail: 'Échéance et n° d’assistance pour le bouton Panne', to: lien('assurance') })
+    liste.push({ icone: '🛡️', label: 'Assurance', detail: 'Une photo ou le PDF de l’attestation suffit', to: lien('assurance') })
   if (!v.dimension_pneus) liste.push({ icone: '🛞', label: 'Dimension des pneus', detail: 'Inscrite sur le flanc du pneu', to: lien('pneus') })
   if (!v.garage_habituel_id) liste.push({ icone: '🏠', label: 'Garage habituel', detail: 'Proposé par défaut à chaque saisie', to: lien('entretien') })
   return liste

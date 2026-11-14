@@ -4,7 +4,9 @@ import { supabase, q } from '../lib/supabase.js'
 import { chargerGarages } from '../lib/donnees.js'
 import { envoyerFichier } from '../lib/images.js'
 import { TYPES_INTERVENTION } from '../lib/constantes.js'
-import { aujourdhui } from '../lib/format.js'
+import { aujourdhui, fmtDate } from '../lib/format.js'
+import { analyserFacture, analyserPV } from '../lib/analyse.js'
+import LecturePapier, { classeLu } from '../components/LecturePapier.jsx'
 import { Bouton, Carte, Champ, Chargement, Erreur, Input, classeInput } from '../components/ui.jsx'
 
 export default function Ajout() {
@@ -94,6 +96,8 @@ function FormIntervention({ voiture, type, onRetour }) {
     marque_piece: '',
   })
   const [facture, setFacture] = useState(null)
+  const [lus, setLus] = useState({})
+  const [contreVisite, setContreVisite] = useState(null) // date limite lue sur le PV
   const [envoi, setEnvoi] = useState(false)
   const [erreur, setErreur] = useState(null)
 
@@ -135,12 +139,20 @@ function FormIntervention({ voiture, type, onRetour }) {
       )
       if (facture) {
         const chemin = await envoyerFichier(voiture.id, facture)
+        const ct = type.code === 'controle_technique'
         await q(
-          supabase.from('documents').insert({ vehicle_id: voiture.id, event_id: eventId, type: 'facture', fichier_path: chemin, nom: `Facture ${type.label}` }),
+          supabase.from('documents').insert({
+            vehicle_id: voiture.id,
+            event_id: eventId,
+            type: ct ? 'controle_technique' : 'facture',
+            fichier_path: chemin,
+            nom: ct ? 'PV de contrôle technique' : `Facture ${type.label}`,
+          }),
         )
       }
-      // Le CT saisi remplace une éventuelle date forcée
-      if (type.code === 'controle_technique') await supabase.from('vehicles').update({ prochain_ct: null }).eq('id', voiture.id)
+      // Le CT saisi remplace une éventuelle date forcée ; une contre-visite impose sa date limite
+      if (type.code === 'controle_technique')
+        await supabase.from('vehicles').update({ prochain_ct: contreVisite || null }).eq('id', voiture.id)
       // Référence de la pièce montée → fiche pièces
       if (type.piece && (f.reference || f.marque_piece)) {
         const { categorie, position } = type.piece
@@ -175,6 +187,24 @@ function FormIntervention({ voiture, type, onRetour }) {
         </h2>
       </div>
 
+      <LecturePapier
+        label={type.code === 'controle_technique' ? 'Photo du PV de contrôle' : 'Photo de la facture'}
+        aide="Ou le PDF : date, km, montant et garage se remplissent"
+        attendus={2}
+        analyser={(texte) => (type.code === 'controle_technique' ? analyserPV(texte, garages) : analyserFacture(texte, garages))}
+        onLu={(fichier, champs) => {
+          setFacture(fichier)
+          const { contre_visite, date_limite, ...valeurs } = champs
+          setF((s) => ({
+            ...s,
+            ...valeurs,
+            note: contre_visite && date_limite ? `Contre-visite à faire avant le ${fmtDate(date_limite)}` : s.note,
+          }))
+          setLus(valeurs)
+          setContreVisite(contre_visite && date_limite ? date_limite : null)
+        }}
+      />
+
       <Carte className="space-y-3">
         {type.code === 'autre' && (
           <Champ label="Quoi ?">
@@ -183,26 +213,28 @@ function FormIntervention({ voiture, type, onRetour }) {
         )}
         <div className="grid grid-cols-2 gap-3">
           <Champ label="Date">
-            <Input type="date" required value={f.date} onChange={maj('date')} />
+            <Input type="date" required value={f.date} onChange={maj('date')} className={classeLu(lus, 'date')} />
           </Champ>
           <Champ label="Km">
-            <Input inputMode="numeric" required value={f.km} onChange={(e) => setF({ ...f, km: e.target.value.replace(/\D/g, '') })} />
+            <Input
+              inputMode="numeric"
+              required
+              value={f.km}
+              onChange={(e) => setF({ ...f, km: e.target.value.replace(/\D/g, '') })}
+              className={classeLu(lus, 'km')}
+            />
           </Champ>
         </div>
       </Carte>
 
       <Carte className="space-y-3">
         <p className="text-sm font-medium text-slate-500">Facultatif</p>
-        <label className="block cursor-pointer rounded-xl border border-dashed border-slate-400 py-3 text-center text-slate-700">
-          {facture ? `📎 ${facture.name}` : '📷 Photo de la facture'}
-          <input type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => setFacture(e.target.files[0])} />
-        </label>
         <div className="grid grid-cols-2 gap-3">
           <Champ label="Coût (€)">
-            <Input inputMode="decimal" value={f.cout} onChange={maj('cout')} />
+            <Input inputMode="decimal" value={f.cout} onChange={maj('cout')} className={classeLu(lus, 'cout')} />
           </Champ>
           <Champ label="Garage">
-            <select value={f.garage_id} onChange={maj('garage_id')} className={classeInput}>
+            <select value={f.garage_id} onChange={maj('garage_id')} className={`${classeInput} ${classeLu(lus, 'garage_id')}`}>
               <option value="">— Moi-même —</option>
               {garages.map((g) => (
                 <option key={g.id} value={g.id}>

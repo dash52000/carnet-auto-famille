@@ -33,6 +33,8 @@ export default defineConfig({
       workbox: {
         navigateFallback: `${base}index.html`,
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // lecteur PDF chargé seulement quand on lit un PDF
+        globIgnores: ['**/pdf*'],
       },
     }),
   ],

@@ -3,7 +3,9 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { supabase, q } from '../lib/supabase.js'
 import { chargerGarages, creerVoiture } from '../lib/donnees.js'
 import { envoyerFichier } from '../lib/images.js'
-import { lireCarteGrise } from '../lib/carteGrise.js'
+import { lireTexte } from '../lib/ocr.js'
+import { analyserAttestation, analyserCarteGrise } from '../lib/analyse.js'
+import LecturePapier, { classeLu } from '../components/LecturePapier.jsx'
 import { normaliserPlaque } from '../lib/format.js'
 import { Bouton, Carte, Champ, Chargement, Erreur, Input, classeInput } from '../components/ui.jsx'
 
@@ -46,7 +48,7 @@ export default function FormVoiture() {
 
 /** Champs de la carte grise ; ceux lus sur la photo sont surlignés en vert. */
 function ChampsCarteGrise({ v, maj, lus = {} }) {
-  const lu = (champ) => (lus[champ] ? 'border-emerald-500 bg-emerald-50' : '')
+  const lu = (champ) => classeLu(lus, champ)
   return (
     <>
       <Champ label="Plaque (A) *">
@@ -101,17 +103,11 @@ function NouvelleVoiture() {
     setCarteGrise(fichier)
     setErreur(null)
 
-    if (!fichier.type.startsWith('image/')) {
-      setMessage({ ok: false, texte: 'Fichier rangé dans les documents. La lecture automatique ne marche qu’avec une photo : saisis les infos.' })
-      setEtape('verif')
-      return
-    }
-
-    setApercu(URL.createObjectURL(fichier))
+    setApercu(fichier.type.startsWith('image/') ? URL.createObjectURL(fichier) : null)
     setProgres(0)
     setEtape('lecture')
     try {
-      const champs = await lireCarteGrise(fichier, setProgres)
+      const champs = analyserCarteGrise(await lireTexte(fichier, setProgres))
       const n = Object.keys(champs).length
       setV((s) => ({ ...s, ...champs }))
       setLus(champs)
@@ -248,6 +244,8 @@ function EditionVoiture({ id }) {
   const [chargement, setChargement] = useState(true)
   const [envoi, setEnvoi] = useState(false)
   const [erreur, setErreur] = useState(null)
+  const [attestation, setAttestation] = useState(null)
+  const [lus, setLus] = useState({})
 
   useEffect(() => {
     chargerGarages().then(setGarages).catch(() => {})
@@ -272,6 +270,10 @@ function EditionVoiture({ id }) {
     setEnvoi(true)
     try {
       await q(supabase.from('vehicles').update(preparerChamps(v)).eq('id', id))
+      if (attestation) {
+        const chemin = await envoyerFichier(id, attestation)
+        await q(supabase.from('documents').insert({ vehicle_id: id, type: 'assurance', fichier_path: chemin, nom: 'Attestation d’assurance' }))
+      }
       navigate(`/voiture/${id}`, { replace: true })
     } catch (err) {
       setErreur(err.message)
@@ -338,17 +340,27 @@ function EditionVoiture({ id }) {
       {voir('assurance') && (
         <Carte className="space-y-3">
           {!section && <h3 className="font-semibold">Assurance</h3>}
+          <LecturePapier
+            label="Attestation d’assurance"
+            aide="Photo, ou le PDF reçu par mail : tout se remplit"
+            analyser={analyserAttestation}
+            onLu={(fichier, champs) => {
+              setAttestation(fichier)
+              setV((s) => ({ ...s, ...champs }))
+              setLus(champs)
+            }}
+          />
           <Champ label="Assureur">
-            <Input value={v.assureur} onChange={maj('assureur')} autoFocus={section === 'assurance'} />
+            <Input value={v.assureur} onChange={maj('assureur')} className={classeLu(lus, 'assureur')} />
           </Champ>
           <Champ label="Échéance du contrat">
-            <Input type="date" value={v.echeance_assurance ?? ''} onChange={maj('echeance_assurance')} />
+            <Input type="date" value={v.echeance_assurance ?? ''} onChange={maj('echeance_assurance')} className={classeLu(lus, 'echeance_assurance')} />
           </Champ>
           <Champ label="Téléphone assistance / dépannage" aide="Utilisé par le bouton « Panne ».">
-            <Input type="tel" value={v.tel_assistance} onChange={maj('tel_assistance')} />
+            <Input type="tel" value={v.tel_assistance} onChange={maj('tel_assistance')} className={classeLu(lus, 'tel_assistance')} />
           </Champ>
           <Champ label="N° de contrat">
-            <Input value={v.numero_contrat} onChange={maj('numero_contrat')} />
+            <Input value={v.numero_contrat} onChange={maj('numero_contrat')} className={classeLu(lus, 'numero_contrat')} />
           </Champ>
         </Carte>
       )}
