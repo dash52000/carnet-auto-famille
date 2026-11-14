@@ -12,7 +12,7 @@ export default function Ajout() {
   const navigate = useNavigate()
   const [voitures, setVoitures] = useState(null)
   const [voitureId, setVoitureId] = useState(params.get('voiture'))
-  const [type, setType] = useState(null)
+  const [type, setType] = useState(() => TYPES_INTERVENTION.find((t) => t.code === params.get('type')) ?? null)
 
   useEffect(() => {
     q(supabase.from('vehicles').select('id, plaque, marque, modele, km_actuel, garage_habituel_id').eq('archivee', false).order('created_at'))

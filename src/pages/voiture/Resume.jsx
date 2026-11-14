@@ -33,6 +33,24 @@ function Ligne({ label, children }) {
   )
 }
 
+/** Infos laissées de côté à la création, à remplir quand on les a sous la main. */
+function aCompleter(v, events) {
+  const liste = []
+  const lien = (section) => `/voiture/${v.id}/modifier?section=${section}`
+  const ajout = (type) => `/ajout?voiture=${v.id}&type=${type}`
+  const ageAns = v.date_1re_immat ? (Date.now() - new Date(v.date_1re_immat)) / (365.25 * 86400000) : null
+
+  if (!events.some((e) => e.type === 'revision'))
+    liste.push({ icone: '🔧', label: 'Dernière révision', detail: 'Pour calculer la prochaine', to: ajout('revision') })
+  if (!events.some((e) => e.type === 'controle_technique') && !v.prochain_ct && (ageAns == null || ageAns >= 4))
+    liste.push({ icone: '📋', label: 'Dernier contrôle technique', detail: 'Pour calculer le prochain', to: ajout('controle_technique') })
+  if (!v.assureur || !v.echeance_assurance)
+    liste.push({ icone: '🛡️', label: 'Assurance', detail: 'Échéance et n° d’assistance pour le bouton Panne', to: lien('assurance') })
+  if (!v.dimension_pneus) liste.push({ icone: '🛞', label: 'Dimension des pneus', detail: 'Inscrite sur le flanc du pneu', to: lien('pneus') })
+  if (!v.garage_habituel_id) liste.push({ icone: '🏠', label: 'Garage habituel', detail: 'Proposé par défaut à chaque saisie', to: lien('entretien') })
+  return liste
+}
+
 export default function Resume({ voiture: v, events, echeances, recharger }) {
   const { profil } = useAuth()
   const navigate = useNavigate()
@@ -64,9 +82,29 @@ export default function Resume({ voiture: v, events, echeances, recharger }) {
     }
   }
 
+  const manquants = v.archivee ? [] : aCompleter(v, events)
+
   return (
     <div className="space-y-5">
       <Erreur message={erreur} />
+
+      {manquants.length > 0 && (
+        <section>
+          <Titre>À compléter</Titre>
+          <Carte className="divide-y divide-slate-100 p-0">
+            {manquants.map((m) => (
+              <Link key={m.label} to={m.to} className="flex items-center gap-3 px-4 py-3 active:bg-slate-50">
+                <span className="text-xl">{m.icone}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">{m.label}</p>
+                  <p className="text-sm text-slate-500">{m.detail}</p>
+                </div>
+                <span className="text-slate-400">›</span>
+              </Link>
+            ))}
+          </Carte>
+        </section>
+      )}
 
       <section>
         <Titre>Échéances</Titre>
