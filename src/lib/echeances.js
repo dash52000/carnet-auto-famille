@@ -1,4 +1,5 @@
 import { aujourdhui, ajouterMois, ajouterJours, joursAvant, dansXJours, fmtDate, fmtKm } from './format.js'
+import { pneusDansLEtat } from './pneus.js'
 
 const inconnu = (v, cle) => (v.inconnus ?? []).includes(cle)
 
@@ -121,7 +122,14 @@ function pneus(v, jeux) {
       : montes.every((j) => j.etat === 'inconnu')
         ? 'inconnu'
         : 'neuf'
-  if (pire === 'a_changer') return { cle: 'pneus', label: 'Pneus', statut: 'retard', detail: 'Pneus à changer' }
+  if (pire === 'a_changer') {
+    const lesquels = montes.flatMap((j) => pneusDansLEtat(j, 'a_changer'))
+    const detail =
+      lesquels.length === 1 ? `Pneu ${lesquels[0].toLowerCase()} à changer`
+      : lesquels.length > 1 && lesquels.length < 4 ? `Pneus à changer : ${lesquels.join(', ').toLowerCase()}`
+      : 'Pneus à changer'
+    return { cle: 'pneus', label: 'Pneus', statut: 'retard', detail }
+  }
 
   if (v.alterne_saisons) {
     const cible = saisonCible()

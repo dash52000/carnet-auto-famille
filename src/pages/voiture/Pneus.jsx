@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { supabase, q } from '../../lib/supabase.js'
-import { ETATS_PNEU, SAISONS, lienPneus } from '../../lib/constantes.js'
+import { SAISONS, lienPneus } from '../../lib/constantes.js'
 import { aujourdhui, fmtDate } from '../../lib/format.js'
 import { saisonCible } from '../../lib/echeances.js'
+import SchemaPneus from '../../components/SchemaPneus.jsx'
 import { Bouton, Carte, Choix, Erreur, Input, Titre } from '../../components/ui.jsx'
 
 const ICONES = { ete: '☀️', hiver: '❄️', '4saisons': '🌤️' }
@@ -204,18 +205,7 @@ export default function Pneus({ voiture: v, jeux, recharger }) {
                   {j.statut === 'monte' ? 'Monté ⇄' : 'Au box ⇄'}
                 </button>
               </div>
-              <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2">
-                {ETATS_PNEU.map((e) => (
-                  <button
-                    key={e.code}
-                    onClick={() => majJeu(j, { etat: e.code })}
-                    className={`rounded-xl px-3 py-2 text-sm font-medium ${j.etat === e.code ? `${e.couleur} text-white` : 'bg-slate-100 text-slate-600'}`}
-                    title={e.code === 'inconnu' ? 'Je ne sais pas' : undefined}
-                  >
-                    {e.label}
-                  </button>
-                ))}
-              </div>
+              <SchemaPneus jeu={j} onChange={(usure, etat) => majJeu(j, { usure, etat })} />
               <div className={`grid gap-2 ${j.statut === 'box' ? 'grid-cols-2' : 'grid-cols-1'}`}>
                 <ChampAuto valeur={j.marque} placeholder="Marque (facultatif)" onEnregistrer={(m) => majJeu(j, { marque: m })} />
                 {j.statut === 'box' && (
