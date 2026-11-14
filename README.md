@@ -3,7 +3,7 @@
 Carnet d'entretien partagé des voitures de la famille : échéances (révision, CT, assurance, pneus), historique des interventions, pneus et box, fiche pièces, garages, fiche « Panne / accident ».
 
 - **Front** : React + Vite + Tailwind, PWA installable — hébergé sur GitHub Pages
-- **Backend** : Supabase (projet `carnet-auto-famille`, région Francfort) — Postgres + RLS, Auth par code email, Storage privé
+- **Backend** : Supabase (projet `carnet-auto-famille`, région Francfort) — Postgres + RLS, connexion anonyme + code famille, Storage privé
 
 App : https://dash52000.github.io/carnet-auto-famille/
 
@@ -21,22 +21,17 @@ Chaque push sur `main` déploie automatiquement (`.github/workflows/deploy.yml`)
 
 Les migrations sont dans `supabase/migrations/` (déjà appliquées au projet Supabase).
 
-Sécurité :
-- Le **1er inscrit** devient admin et membre de la famille. Les autres doivent être **invités** (Réglages → Inviter) ; un inconnu qui s'inscrit ne voit rien.
-- Une voiture n'est visible que par ses **membres** (son créateur, puis ceux avec qui elle est partagée).
+Accès :
+- Pas d'email : on ouvre le **lien d'invitation** (Réglages → Partager), qui contient le **code famille**, et on donne son prénom. Techniquement : connexion anonyme Supabase + fonction `rejoindre_famille(code, prenom)`.
+- Le **1er** à entrer crée la famille et devient admin. Un admin peut changer le code et retirer quelqu'un.
+- Toute la famille voit toutes les voitures. Un inconnu sans code ne voit rien (RLS).
 - Suppression d'une intervention / d'un document : son auteur ou un admin. Suppression d'une voiture : admin.
 - Fichiers dans le bucket privé `documents`, chemin `<id_voiture>/<fichier>`.
+- Un compte = un appareil : changer de téléphone ou installer l'app sur iPhone oblige à redonner son prénom.
 
-## Configuration Supabase à faire dans le tableau de bord
+## Configuration Supabase (tableau de bord)
 
-1. **Authentication → URL Configuration** : *Site URL* = `https://dash52000.github.io/carnet-auto-famille/` (et l'ajouter aux *Redirect URLs*, avec `http://localhost:5173/carnet-auto-famille/` pour le dev).
-2. **Authentication → Email Templates** : dans *Magic Link* **et** *Confirm signup*, ajouter le code à 6 chiffres :
-   ```html
-   <h2>Ton code : {{ .Token }}</h2>
-   <p>Ou clique ici depuis ton téléphone : <a href="{{ .ConfirmationURL }}">se connecter</a></p>
-   ```
-   (Le code est indispensable quand l'app est installée sur iPhone : le lien s'ouvre dans Safari, pas dans l'app.)
-3. **Authentication → SMTP Settings** : le serveur d'email intégré n'envoie qu'aux membres de l'équipe Supabase. Pour inviter la famille, brancher un SMTP gratuit (Brevo, Resend, ou Gmail avec mot de passe d'application).
+- **Authentication → Sign In / Providers** : activer **Allow anonymous sign-ins**.
 
 ## Feuille de route
 

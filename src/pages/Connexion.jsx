@@ -1,38 +1,47 @@
 import { useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
+import { useAuth } from '../lib/auth.jsx'
 import { Bouton, Champ, Erreur, Input } from '../components/ui.jsx'
 
+const CLE_CODE = 'carnet-auto-code'
+
+/** Écran d'entrée : on arrive par le lien d'invitation (qui contient le code) et on donne son prénom. */
 export default function Connexion() {
-  const [email, setEmail] = useState('')
-  const [code, setCode] = useState('')
-  const [etape, setEtape] = useState('email')
+  const { session, chargerProfil } = useAuth()
+  const [params] = useSearchParams()
+  const [code, setCode] = useState(() => {
+    const duLien = params.get('code')
+    if (duLien) localStorage.setItem(CLE_CODE, duLien)
+    return (duLien || localStorage.getItem(CLE_CODE) || '').toUpperCase()
+  })
+  const [prenom, setPrenom] = useState('')
   const [erreur, setErreur] = useState(null)
   const [envoi, setEnvoi] = useState(false)
 
-  async function envoyerCode(e) {
+  async function entrer(e) {
     e.preventDefault()
     setErreur(null)
     setEnvoi(true)
-    const { error } = await supabase.auth.signInWithOtp({
-      email: email.trim().toLowerCase(),
-      options: { emailRedirectTo: window.location.origin + import.meta.env.BASE_URL },
-    })
-    setEnvoi(false)
-    if (error) setErreur(error.message)
-    else setEtape('code')
-  }
-
-  async function verifierCode(e) {
-    e.preventDefault()
-    setErreur(null)
-    setEnvoi(true)
-    const { error } = await supabase.auth.verifyOtp({
-      email: email.trim().toLowerCase(),
-      token: code.trim(),
-      type: 'email',
-    })
-    setEnvoi(false)
-    if (error) setErreur('Code incorrect ou expiré. Redemande un code.')
+    try {
+      if (!session) {
+        const { error } = await supabase.auth.signInAnonymously()
+        if (error) throw new Error(error.message)
+      }
+      // le code peut être collé sous forme de lien complet
+      const codePropre = (code.match(/code=([A-Za-z0-9]+)/)?.[1] ?? code).trim().toUpperCase()
+      const { error } = await supabase.rpc('rejoindre_famille', { p_code: codePropre, p_prenom: prenom.trim() })
+      if (error) throw new Error(error.message.includes('incorrect') ? 'Code famille incorrect.' : error.message)
+      await chargerProfil()
+    } catch (err) {
+      setErreur(
+        err.message.toLowerCase().includes('anonymous')
+          ? "La connexion anonyme n'est pas activée dans Supabase (Authentication → Sign In / Providers)."
+          : err.message,
+      )
+    } finally {
+      setEnvoi(false)
+    }
   }
 
   return (
@@ -43,38 +52,22 @@ export default function Connexion() {
         <p className="text-slate-600">L'entretien de nos voitures, au même endroit.</p>
       </div>
 
-      {etape === 'email' ? (
-        <form onSubmit={envoyerCode} className="space-y-4">
-          <Champ label="Ton email">
-            <Input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          </Champ>
-          <Bouton className="w-full" disabled={envoi}>
-            {envoi ? 'Envoi…' : 'Recevoir un code'}
-          </Bouton>
-        </form>
-      ) : (
-        <form onSubmit={verifierCode} className="space-y-4">
-          <p className="text-sm text-slate-600">
-            Un email vient d'être envoyé à <b>{email}</b>. Tape le code reçu, ou clique sur le lien depuis ce téléphone.
-          </p>
-          <Champ label="Code reçu par email">
-            <Input
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              required
-              value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
-              className="text-center text-2xl tracking-[0.4em]"
-            />
-          </Champ>
-          <Bouton className="w-full" disabled={envoi || code.length < 6}>
-            {envoi ? 'Vérification…' : 'Se connecter'}
-          </Bouton>
-          <Bouton type="button" variante="discret" className="w-full" onClick={() => setEtape('email')}>
-            Changer d'email
-          </Bouton>
-        </form>
-      )}
+      <form onSubmit={entrer} className="space-y-4">
+        <Champ label="Ton prénom" aide="Affiché dans l'historique : « Papa a changé les plaquettes… »">
+          <Input required value={prenom} onChange={(e) => setPrenom(e.target.value)} placeholder="Papa, Damien, Mamie…" />
+        </Champ>
+        <Champ label="Code famille" aide="Déjà rempli si tu as ouvert le lien d'invitation. Tu peux aussi coller le lien.">
+          <Input
+            value={code}
+            onChange={(e) => setCode(e.target.value)}
+            autoCapitalize="characters"
+            className="text-center font-mono text-xl tracking-widest uppercase"
+          />
+        </Champ>
+        <Bouton className="w-full" disabled={envoi}>
+          {envoi ? 'Un instant…' : 'Entrer'}
+        </Bouton>
+      </form>
       <Erreur message={erreur} />
     </div>
   )

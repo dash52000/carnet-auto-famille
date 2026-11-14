@@ -2,9 +2,8 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase, q } from '../../lib/supabase.js'
 import { useAuth } from '../../lib/auth.jsx'
-import { chargerProfils } from '../../lib/donnees.js'
 import { trierParUrgence } from '../../lib/echeances.js'
-import { fmtDate, fmtEuros, fmtKm, nomPersonne } from '../../lib/format.js'
+import { fmtDate, fmtEuros, fmtKm } from '../../lib/format.js'
 import { Bouton, Carte, Erreur, Pastille, Titre } from '../../components/ui.jsx'
 
 export function Copier({ valeur }) {
@@ -34,11 +33,10 @@ function Ligne({ label, children }) {
   )
 }
 
-export default function Resume({ voiture: v, events, echeances, membres, recharger }) {
+export default function Resume({ voiture: v, events, echeances, recharger }) {
   const { profil } = useAuth()
   const navigate = useNavigate()
   const [erreur, setErreur] = useState(null)
-  const [profils, setProfils] = useState(null)
 
   const annee = new Date().getFullYear().toString()
   const coutAnnee = events.filter((e) => e.date.startsWith(annee)).reduce((s, e) => s + Number(e.cout || 0), 0)
@@ -65,16 +63,6 @@ export default function Resume({ voiture: v, events, echeances, membres, recharg
       setErreur(e.message)
     }
   }
-
-  const ajouterMembre = (userId) =>
-    action(() => q(supabase.from('vehicle_members').insert({ vehicle_id: v.id, user_id: userId })))
-  const retirerMembre = (userId) => {
-    if (membres.length <= 1) return setErreur('Il faut garder au moins un membre.')
-    if (userId === profil.id && !confirm('Te retirer de cette voiture ? Tu ne la verras plus.')) return
-    action(() => q(supabase.from('vehicle_members').delete().eq('vehicle_id', v.id).eq('user_id', userId)))
-  }
-
-  const idsMembres = new Set(membres.map((m) => m.user_id))
 
   return (
     <div className="space-y-5">
@@ -121,40 +109,6 @@ export default function Resume({ voiture: v, events, echeances, membres, recharg
           <Ligne label="Garage habituel">{v.garage?.nom ?? '—'}</Ligne>
           <Ligne label="Assurance">{[v.assureur, v.numero_contrat].filter(Boolean).join(' · ') || '—'}</Ligne>
           <Ligne label={`Dépenses ${annee}`}>{fmtEuros(coutAnnee) || '0 €'}</Ligne>
-        </Carte>
-      </section>
-
-      <section>
-        <Titre>Qui suit cette voiture</Titre>
-        <Carte className="space-y-2">
-          {membres.map((m) => (
-            <div key={m.user_id} className="flex items-center justify-between">
-              <span>{nomPersonne(m.profil)}</span>
-              <button className="text-sm text-slate-500 underline" onClick={() => retirerMembre(m.user_id)}>
-                retirer
-              </button>
-            </div>
-          ))}
-          {profils === null ? (
-            <button className="text-sm font-medium text-sky-600" onClick={() => chargerProfils().then(setProfils)}>
-              + Partager avec quelqu'un de la famille
-            </button>
-          ) : (
-            <div className="flex flex-wrap gap-2 pt-2">
-              {profils
-                .filter((p) => !idsMembres.has(p.id))
-                .map((p) => (
-                  <button key={p.id} onClick={() => ajouterMembre(p.id)} className="rounded-full border border-sky-600 px-3 py-1 text-sm text-sky-700">
-                    + {nomPersonne(p)}
-                  </button>
-                ))}
-              {profils.filter((p) => !idsMembres.has(p.id)).length === 0 && (
-                <p className="text-sm text-slate-500">
-                  Tout le monde suit déjà cette voiture. Pour ajouter quelqu'un de nouveau : Réglages → Inviter.
-                </p>
-              )}
-            </div>
-          )}
         </Carte>
       </section>
 

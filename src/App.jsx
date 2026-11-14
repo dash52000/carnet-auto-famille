@@ -3,7 +3,6 @@ import { useAuth } from './lib/auth.jsx'
 import { Chargement } from './components/ui.jsx'
 import Layout from './components/Layout.jsx'
 import Connexion from './pages/Connexion.jsx'
-import EnAttente from './pages/EnAttente.jsx'
 import Prenom from './pages/Prenom.jsx'
 import Accueil from './pages/Accueil.jsx'
 import FormVoiture from './pages/FormVoiture.jsx'
@@ -20,7 +19,7 @@ export default function App() {
   if (session === undefined) return <Chargement />
   if (!session) return <Connexion />
   if (profil === undefined) return <Chargement />
-  if (!profil || !profil.est_membre) return <EnAttente />
+  if (!profil || !profil.est_membre) return <Connexion />
   if (!profil.prenom) return <Prenom />
 
   return (
