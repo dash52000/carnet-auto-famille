@@ -46,7 +46,7 @@ function aCompleter(v, events) {
     liste.push({ icone: '📋', label: 'Dernier contrôle technique', detail: 'Une photo du PV suffit', to: ajout('controle_technique') })
   if (!v.assureur || !v.echeance_assurance)
     liste.push({ icone: '🛡️', label: 'Assurance', detail: 'Une photo ou le PDF de l’attestation suffit', to: lien('assurance') })
-  if (!v.dimension_pneus) liste.push({ icone: '🛞', label: 'Dimension des pneus', detail: 'Inscrite sur le flanc du pneu', to: lien('pneus') })
+  if (!v.dimension_pneus) liste.push({ icone: '🛞', label: 'Dimension des pneus', detail: 'Inscrite sur le flanc du pneu', to: `/voiture/${v.id}?onglet=pneus` })
   if (!v.garage_habituel_id) liste.push({ icone: '🏠', label: 'Garage habituel', detail: 'Proposé par défaut à chaque saisie', to: lien('entretien') })
   return liste
 }

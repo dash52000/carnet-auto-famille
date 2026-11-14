@@ -114,7 +114,15 @@ function FormIntervention({ voiture, type, onRetour }) {
       .then(({ data }) => {
         if (data?.[0]) setF((s) => ({ ...s, garage_id: s.garage_id || data[0].garage_id }))
       })
-  }, [voiture.id])
+    // référence déjà connue pour cette pièce : souvent la même, il suffit de confirmer
+    if (type.piece) {
+      let requete = supabase.from('parts').select('reference, marque').eq('vehicle_id', voiture.id).eq('categorie', type.piece.categorie)
+      requete = type.piece.position ? requete.eq('position', type.piece.position) : requete.is('position', null)
+      requete.limit(1).then(({ data }) => {
+        if (data?.[0]) setF((s) => ({ ...s, reference: s.reference || data[0].reference || '', marque_piece: s.marque_piece || data[0].marque || '' }))
+      })
+    }
+  }, [voiture.id, type.piece])
 
   const maj = (champ) => (e) => setF({ ...f, [champ]: e.target.value })
 
@@ -225,6 +233,19 @@ function FormIntervention({ voiture, type, onRetour }) {
             />
           </Champ>
         </div>
+        {type.piece && (
+          <div className="space-y-1">
+            <div className="grid grid-cols-2 gap-3">
+              <Champ label="Réf. de la pièce">
+                <Input value={f.reference} onChange={maj('reference')} className="font-mono" placeholder="Sur la boîte" />
+              </Champ>
+              <Champ label="Marque">
+                <Input value={f.marque_piece} onChange={maj('marque_piece')} placeholder="Bosch, Valeo…" />
+              </Champ>
+            </div>
+            <p className="text-xs text-slate-500">Facultatif : la référence est retenue dans la fiche Pièces pour racheter la même.</p>
+          </div>
+        )}
       </Carte>
 
       <Carte className="space-y-3">
@@ -244,16 +265,6 @@ function FormIntervention({ voiture, type, onRetour }) {
             </select>
           </Champ>
         </div>
-        {type.piece && (
-          <div className="grid grid-cols-2 gap-3">
-            <Champ label="Réf. de la pièce">
-              <Input value={f.reference} onChange={maj('reference')} className="font-mono" />
-            </Champ>
-            <Champ label="Marque">
-              <Input value={f.marque_piece} onChange={maj('marque_piece')} />
-            </Champ>
-          </div>
-        )}
         {type.code !== 'autre' && (
           <Champ label="Précision">
             <Input value={f.libelle} onChange={maj('libelle')} placeholder={type.code === 'filtres' ? 'Ex. filtre à air + habitacle' : ''} />
