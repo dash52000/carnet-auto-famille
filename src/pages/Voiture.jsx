@@ -2,7 +2,7 @@ import { useSearchParams, useParams, Link } from 'react-router-dom'
 import { supabase, q } from '../lib/supabase.js'
 import { echeancesVoiture } from '../lib/echeances.js'
 import { memoriserPourPanne } from '../lib/donnees.js'
-import { fmtKm } from '../lib/format.js'
+import { fmtKmApprox } from '../lib/format.js'
 import { Chargement, Erreur, Onglets, Pastille, useCharger } from '../components/ui.jsx'
 import Resume from './voiture/Resume.jsx'
 import Pneus from './voiture/Pneus.jsx'
@@ -71,7 +71,7 @@ export default function Voiture() {
             {v.archivee && <span className="rounded bg-slate-200 px-2 text-xs">vendue</span>}
           </div>
           <p className="mt-1 text-lg font-semibold">{[v.marque, v.modele].filter(Boolean).join(' ') || 'Modèle ?'}</p>
-          <p className="text-sm text-slate-500">{fmtKm(v.km_actuel)}</p>
+          <p className="text-sm text-slate-500">{fmtKmApprox(v.km_actuel, v.km_actuel_approx)}</p>
         </div>
         <Link to={`/voiture/${v.id}/panne`} className="rounded-xl bg-red-600 px-3 py-2 text-sm font-semibold text-white">
           🚨 Panne

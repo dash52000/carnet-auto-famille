@@ -18,10 +18,12 @@ export const TYPES_INTERVENTION = [
 export const LIBELLE_TYPE = Object.fromEntries([
   ...TYPES_INTERVENTION.map((t) => [t.code, t.label]),
   ['changement_saison', 'Changement de saison'],
+  ['info', 'Info'],
 ])
 export const ICONE_TYPE = Object.fromEntries([
   ...TYPES_INTERVENTION.map((t) => [t.code, t.icone]),
   ['changement_saison', '🔄'],
+  ['info', '💬'],
 ])
 
 export const SAISONS = { ete: 'Été', hiver: 'Hiver', '4saisons': '4 saisons' }
@@ -29,6 +31,7 @@ export const ETATS_PNEU = [
   { code: 'neuf', label: 'Neuf', couleur: 'bg-emerald-500' },
   { code: 'mi_use', label: 'Mi-usé', couleur: 'bg-amber-500' },
   { code: 'a_changer', label: 'À changer', couleur: 'bg-red-500' },
+  { code: 'inconnu', label: '?', couleur: 'bg-slate-400' },
 ]
 
 // Fiche pièces : lignes proposées par défaut
@@ -63,3 +66,12 @@ export const MARCHANDS = [
 ]
 export const lienPneus = (dimension) =>
   `https://www.allopneus.com/liste/pneu-auto?q=${encodeURIComponent(dimension)}`
+
+/** Raccourcis « il y a… » pour une date qu'on ne connaît pas précisément (en mois). */
+export const IL_Y_A = [
+  { mois: 3, label: '~3 mois' },
+  { mois: 6, label: '~6 mois' },
+  { mois: 12, label: '~1 an' },
+  { mois: 24, label: '~2 ans' },
+  { mois: 30, label: 'Plus de 2 ans' },
+]

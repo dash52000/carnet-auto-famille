@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { supabase, q } from '../../lib/supabase.js'
 import { useAuth } from '../../lib/auth.jsx'
 import { trierParUrgence } from '../../lib/echeances.js'
-import { fmtDate, fmtEuros, fmtKm } from '../../lib/format.js'
+import { fmtDate, fmtEuros, fmtKm, fmtKmApprox } from '../../lib/format.js'
 import { Bouton, Carte, Erreur, Pastille, Titre } from '../../components/ui.jsx'
 
 export function Copier({ valeur }) {
@@ -31,24 +31,6 @@ function Ligne({ label, children }) {
       <span className="text-right">{children}</span>
     </div>
   )
-}
-
-/** Infos laissées de côté à la création, à remplir quand on les a sous la main. */
-function aCompleter(v, events) {
-  const liste = []
-  const lien = (section) => `/voiture/${v.id}/modifier?section=${section}`
-  const ajout = (type) => `/ajout?voiture=${v.id}&type=${type}`
-  const ageAns = v.date_1re_immat ? (Date.now() - new Date(v.date_1re_immat)) / (365.25 * 86400000) : null
-
-  if (!events.some((e) => e.type === 'revision'))
-    liste.push({ icone: '🔧', label: 'Dernière révision', detail: 'Une photo de la facture suffit', to: ajout('revision') })
-  if (!events.some((e) => e.type === 'controle_technique') && !v.prochain_ct && (ageAns == null || ageAns >= 4))
-    liste.push({ icone: '📋', label: 'Dernier contrôle technique', detail: 'Une photo du PV suffit', to: ajout('controle_technique') })
-  if (!v.assureur || !v.echeance_assurance)
-    liste.push({ icone: '🛡️', label: 'Assurance', detail: 'Une photo ou le PDF de l’attestation suffit', to: lien('assurance') })
-  if (!v.dimension_pneus) liste.push({ icone: '🛞', label: 'Dimension des pneus', detail: 'Inscrite sur le flanc du pneu', to: `/voiture/${v.id}?onglet=pneus` })
-  if (!v.garage_habituel_id) liste.push({ icone: '🏠', label: 'Garage habituel', detail: 'Proposé par défaut à chaque saisie', to: lien('entretien') })
-  return liste
 }
 
 export default function Resume({ voiture: v, events, echeances, recharger }) {
@@ -82,29 +64,9 @@ export default function Resume({ voiture: v, events, echeances, recharger }) {
     }
   }
 
-  const manquants = v.archivee ? [] : aCompleter(v, events)
-
   return (
     <div className="space-y-5">
       <Erreur message={erreur} />
-
-      {manquants.length > 0 && (
-        <section>
-          <Titre>À compléter</Titre>
-          <Carte className="divide-y divide-slate-100 p-0">
-            {manquants.map((m) => (
-              <Link key={m.label} to={m.to} className="flex items-center gap-3 px-4 py-3 active:bg-slate-50">
-                <span className="text-xl">{m.icone}</span>
-                <div className="min-w-0 flex-1">
-                  <p className="font-medium">{m.label}</p>
-                  <p className="text-sm text-slate-500">{m.detail}</p>
-                </div>
-                <span className="text-slate-400">›</span>
-              </Link>
-            ))}
-          </Carte>
-        </section>
-      )}
 
       <section>
         <Titre>Échéances</Titre>
@@ -133,7 +95,7 @@ export default function Resume({ voiture: v, events, echeances, recharger }) {
           Infos
         </Titre>
         <Carte className="divide-y divide-slate-100 py-2">
-          <Ligne label="Kilométrage">{fmtKm(v.km_actuel)}</Ligne>
+          <Ligne label="Kilométrage">{fmtKmApprox(v.km_actuel, v.km_actuel_approx)}</Ligne>
           <Ligne label="1re immatriculation">{fmtDate(v.date_1re_immat)}</Ligne>
           <Ligne label="VIN">
             <Copier valeur={v.vin} />

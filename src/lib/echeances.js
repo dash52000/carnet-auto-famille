@@ -1,5 +1,7 @@
 import { aujourdhui, ajouterMois, ajouterJours, joursAvant, dansXJours, fmtDate, fmtKm } from './format.js'
 
+const inconnu = (v, cle) => (v.inconnus ?? []).includes(cle)
+
 // Statuts : 'retard' (rouge) · 'bientot' (orange) · 'ok' (vert) · 'inconnu' (gris)
 export const COULEUR_STATUT = {
   retard: 'bg-red-500',
@@ -23,7 +25,10 @@ export function kmParJour(points) {
 function revision(v, events, rythme) {
   const derniere = events.find((e) => e.type === 'revision')
   if (!derniere) {
-    return { cle: 'revision', label: 'Révision', statut: 'inconnu', detail: 'Ajoute la dernière révision' }
+    // « je ne sais pas » : hypothèse prudente, une révision est à prévoir
+    return inconnu(v, 'revision')
+      ? { cle: 'revision', label: 'Révision', statut: 'bientot', detail: 'À faire : date de la dernière inconnue' }
+      : { cle: 'revision', label: 'Révision', statut: 'inconnu', detail: 'Dernière révision pas encore renseignée' }
   }
   const dateDue = ajouterMois(derniere.date, v.intervalle_revision_mois)
   const kmDu = derniere.km != null ? derniere.km + v.intervalle_revision_km : null
@@ -39,37 +44,56 @@ function revision(v, events, rythme) {
   }
   const enRetard = jours < 0 || (kmRestants != null && kmRestants <= 0)
   const statut = enRetard ? 'retard' : jours <= 30 || (kmRestants != null && kmRestants <= 1000) ? 'bientot' : 'ok'
-  const detailKm = kmDu != null ? ` ou ${fmtKm(kmDu)}` : ''
+  const detailKm = kmDu != null ? ` ou ${derniere.km_approx ? '~' : ''}${fmtKm(kmDu)}` : ''
+  const tilde = derniere.date_approx ? '~' : ''
   return {
     cle: 'revision',
     label: 'Révision',
     statut,
     jours,
     detail: enRetard
-      ? `En retard (prévue le ${fmtDate(dateDue)}${detailKm})`
-      : `${fmtDate(parKm ? ajouterJours(aujourdhui(), jours) : dateDue)}${detailKm} · ${dansXJours(jours)}${parKm ? ' (estimé au km)' : ''}`,
+      ? `En retard (prévue ${tilde ? 'vers le' : 'le'} ${fmtDate(dateDue)}${detailKm})`
+      : `${tilde}${fmtDate(parKm ? ajouterJours(aujourdhui(), jours) : dateDue)}${detailKm} · ${dansXJours(jours)}${parKm ? ' (estimé au km)' : ''}`,
   }
 }
 
 function controleTechnique(v, events) {
   let date = v.prochain_ct
+  let estime = false
   if (!date) {
     const dernier = events.find((e) => e.type === 'controle_technique')
-    if (dernier) date = ajouterMois(dernier.date, 24)
-    else if (v.date_1re_immat) {
-      const premier = ajouterMois(v.date_1re_immat, 48)
-      if (joursAvant(premier) >= 0) date = premier
-      else return { cle: 'ct', label: 'Contrôle technique', statut: 'inconnu', detail: 'Ajoute le dernier CT' }
+    if (dernier) {
+      date = ajouterMois(dernier.date, 24)
+      estime = dernier.date_approx
+    } else if (v.date_1re_immat) {
+      // pas de CT connu : règle française depuis la 1re immatriculation (4 ans, puis tous les 2 ans)
+      date = ajouterMois(v.date_1re_immat, 48)
+      if (joursAvant(date) < 0) {
+        estime = true
+        while (joursAvant(date) < 0) date = ajouterMois(date, 24)
+      }
     }
   }
   if (!date) return { cle: 'ct', label: 'Contrôle technique', statut: 'inconnu', detail: 'Date de 1re immatriculation manquante' }
   const jours = joursAvant(date)
   const statut = jours < 0 ? 'retard' : jours <= 60 ? 'bientot' : 'ok'
-  return { cle: 'ct', label: 'Contrôle technique', statut, jours, detail: `${fmtDate(date)} · ${dansXJours(jours)}` }
+  return {
+    cle: 'ct',
+    label: 'Contrôle technique',
+    statut,
+    jours,
+    detail: `${estime ? '~' : ''}${fmtDate(date)} · ${dansXJours(jours)}${estime ? ' (estimé)' : ''}`,
+  }
 }
 
 function assurance(v) {
-  if (!v.echeance_assurance) return { cle: 'assurance', label: 'Assurance', statut: 'inconnu', detail: 'Échéance non renseignée' }
+  if (!v.echeance_assurance)
+    return {
+      cle: 'assurance',
+      label: 'Assurance',
+      statut: 'inconnu',
+      detail: inconnu(v, 'assurance') ? 'Échéance inconnue' : 'Échéance non renseignée',
+    }
   const jours = joursAvant(v.echeance_assurance)
   const statut = jours < 0 ? 'retard' : jours <= 30 ? 'bientot' : 'ok'
   return { cle: 'assurance', label: 'Assurance', statut, jours, detail: `${fmtDate(v.echeance_assurance)} · ${dansXJours(jours)}` }
@@ -90,7 +114,13 @@ function prochainChangement(dateIso = aujourdhui()) {
 function pneus(v, jeux) {
   const montes = jeux.filter((j) => j.statut === 'monte')
   if (!montes.length) return { cle: 'pneus', label: 'Pneus', statut: 'inconnu', detail: 'Aucun jeu de pneus monté renseigné' }
-  const pire = montes.some((j) => j.etat === 'a_changer') ? 'a_changer' : montes.some((j) => j.etat === 'mi_use') ? 'mi_use' : 'neuf'
+  const pire = montes.some((j) => j.etat === 'a_changer')
+    ? 'a_changer'
+    : montes.some((j) => j.etat === 'mi_use')
+      ? 'mi_use'
+      : montes.every((j) => j.etat === 'inconnu')
+        ? 'inconnu'
+        : 'neuf'
   if (pire === 'a_changer') return { cle: 'pneus', label: 'Pneus', statut: 'retard', detail: 'Pneus à changer' }
 
   if (v.alterne_saisons) {
@@ -105,6 +135,7 @@ function pneus(v, jeux) {
       return { cle: 'pneus', label: 'Pneus', statut: 'bientot', jours, detail: `Changement de saison ${dansXJours(jours)}` }
     }
   }
+  if (pire === 'inconnu') return { cle: 'pneus', label: 'Pneus', statut: 'inconnu', detail: 'État des pneus inconnu' }
   return pire === 'mi_use'
     ? { cle: 'pneus', label: 'Pneus', statut: 'ok', detail: 'Mi-usés' }
     : { cle: 'pneus', label: 'Pneus', statut: 'ok', detail: 'En bon état' }

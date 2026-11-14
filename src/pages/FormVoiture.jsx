@@ -84,6 +84,7 @@ function NouvelleVoiture() {
   const [etape, setEtape] = useState('photo') // photo | lecture | verif
   const [v, setV] = useState(VIDE)
   const [km, setKm] = useState('')
+  const [kmApprox, setKmApprox] = useState(false)
   const [carteGrise, setCarteGrise] = useState(null)
   const [apercu, setApercu] = useState(null)
   const [progres, setProgres] = useState(0)
@@ -130,7 +131,7 @@ function NouvelleVoiture() {
     setEnvoi(true)
     try {
       const nouvelId = await creerVoiture(preparerChamps(v))
-      if (km) await q(supabase.from('mileage_readings').insert({ vehicle_id: nouvelId, km: parseInt(km, 10) }))
+      if (km) await q(supabase.from('mileage_readings').insert({ vehicle_id: nouvelId, km: parseInt(km, 10), km_approx: kmApprox }))
       if (carteGrise) {
         const chemin = await envoyerFichier(nouvelId, carteGrise)
         await q(supabase.from('documents').insert({ vehicle_id: nouvelId, type: 'carte_grise', fichier_path: chemin, nom: 'Carte grise' }))
@@ -212,10 +213,14 @@ function NouvelleVoiture() {
         <Champ label="Kilométrage actuel">
           <Input inputMode="numeric" value={km} onChange={(e) => setKm(e.target.value.replace(/\D/g, ''))} placeholder="Ex. 85000" />
         </Champ>
+        <label className="mt-2 flex items-center gap-2 text-sm text-slate-600">
+          <input type="checkbox" checked={kmApprox} onChange={(e) => setKmApprox(e.target.checked)} className="h-4 w-4" />
+          environ (pas besoin d’aller vérifier au compteur)
+        </label>
       </Carte>
 
       <p className="text-center text-xs text-slate-500">
-        Pneus, assurance, dernière révision… se complètent ensuite depuis la fiche de la voiture.
+        Le reste (révision, assurance, pneus…) te sera demandé petit à petit, une question rapide à la fois.
       </p>
 
       <Erreur message={erreur} />

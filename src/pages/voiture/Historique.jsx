@@ -1,9 +1,10 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { supabase, q } from '../../lib/supabase.js'
 import { useAuth } from '../../lib/auth.jsx'
 import { ICONE_TYPE, LIBELLE_TYPE } from '../../lib/constantes.js'
 import { lienFichier } from '../../lib/images.js'
-import { fmtDate, fmtEuros, fmtKm, nomPersonne } from '../../lib/format.js'
+import { fmtDate, fmtDateApprox, fmtEuros, fmtKm, fmtKmApprox, nomPersonne } from '../../lib/format.js'
 import { Carte, Erreur } from '../../components/ui.jsx'
 
 export default function Historique({ events, releves, documents, recharger }) {
@@ -42,6 +43,12 @@ export default function Historique({ events, releves, documents, recharger }) {
       {events.map((ev) => {
         const peutSupprimer = ev.auteur_id === profil.id || profil.est_admin
         const titre = ev.type === 'autre' ? ev.libelle || 'Autre' : LIBELLE_TYPE[ev.type]
+        if (ev.type === 'info')
+          return (
+            <p key={ev.id} className="px-1 text-sm text-slate-500">
+              💬 <b className="text-slate-700">{nomPersonne(ev.auteur)}</b> {ev.libelle} · {fmtDate(ev.created_at)}
+            </p>
+          )
         return (
           <Carte key={ev.id} className="flex gap-3">
             <span className="text-2xl">{ICONE_TYPE[ev.type]}</span>
@@ -51,7 +58,14 @@ export default function Historique({ events, releves, documents, recharger }) {
                 {ev.type !== 'autre' && ev.libelle ? ` (${ev.libelle})` : ''}
               </p>
               <p className="text-sm text-slate-600">
-                {[fmtDate(ev.date), ev.km != null && fmtKm(ev.km), fmtEuros(ev.cout)].filter(Boolean).join(' – ')}
+                {[fmtDateApprox(ev.date, ev.date_approx), ev.km != null && fmtKmApprox(ev.km, ev.km_approx), fmtEuros(ev.cout)]
+                  .filter(Boolean)
+                  .join(' – ')}
+                {ev.date_approx && (
+                  <Link to={`/ajout?voiture=${ev.vehicle_id}&type=${ev.type}`} className="ml-2 text-sky-600">
+                    préciser
+                  </Link>
+                )}
               </p>
               {ev.garage && <p className="text-sm text-slate-500">🔧 {ev.garage.nom}</p>}
               {ev.note && <p className="mt-1 text-sm text-slate-700">{ev.note}</p>}
@@ -80,7 +94,7 @@ export default function Historique({ events, releves, documents, recharger }) {
               {releves.map((r) => (
                 <div key={r.id} className="flex justify-between px-4 py-2">
                   <span>{fmtDate(r.date)}</span>
-                  <span>{fmtKm(r.km)}</span>
+                  <span>{fmtKmApprox(r.km, r.km_approx)}</span>
                 </div>
               ))}
             </Carte>

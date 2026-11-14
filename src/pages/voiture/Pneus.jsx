@@ -74,7 +74,7 @@ export default function Pneus({ voiture: v, jeux, recharger }) {
           vehicle_id: v.id,
           saison,
           statut,
-          etat: 'neuf',
+          etat: 'inconnu',
           date_depot: statut === 'box' ? aujourdhui() : null,
         }),
       )
@@ -204,12 +204,13 @@ export default function Pneus({ voiture: v, jeux, recharger }) {
                   {j.statut === 'monte' ? 'Monté ⇄' : 'Au box ⇄'}
                 </button>
               </div>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-[1fr_1fr_1fr_auto] gap-2">
                 {ETATS_PNEU.map((e) => (
                   <button
                     key={e.code}
                     onClick={() => majJeu(j, { etat: e.code })}
-                    className={`rounded-xl py-2 text-sm font-medium ${j.etat === e.code ? `${e.couleur} text-white` : 'bg-slate-100 text-slate-600'}`}
+                    className={`rounded-xl px-3 py-2 text-sm font-medium ${j.etat === e.code ? `${e.couleur} text-white` : 'bg-slate-100 text-slate-600'}`}
+                    title={e.code === 'inconnu' ? 'Je ne sais pas' : undefined}
                   >
                     {e.label}
                   </button>

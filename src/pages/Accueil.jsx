@@ -3,8 +3,9 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase.js'
 import { chargerVoitures } from '../lib/donnees.js'
 import { trierParUrgence, pireStatut } from '../lib/echeances.js'
-import { fmtKm } from '../lib/format.js'
+import { fmtKm, fmtKmApprox } from '../lib/format.js'
 import { Carte, Chargement, Erreur, Pastille, Titre, useCharger } from '../components/ui.jsx'
+import QuestionRapide from '../components/QuestionRapide.jsx'
 
 export default function Accueil() {
   const { data: voitures, erreur, chargement, recharger } = useCharger(chargerVoitures)
@@ -22,6 +23,8 @@ export default function Accueil() {
   return (
     <div className="space-y-6">
       <Erreur message={erreur} />
+
+      {voitures && <QuestionRapide voitures={voitures} recharger={recharger} />}
 
       {aFaire.length > 0 && (
         <section>
@@ -97,7 +100,7 @@ function CarteVoiture({ voiture: v, onKm }) {
     e.preventDefault()
     const valeur = parseInt(km, 10)
     if (!valeur) return
-    if (v.km_actuel && valeur < v.km_actuel && !confirm(`C'est moins que le dernier relevé (${fmtKm(v.km_actuel)}). Enregistrer quand même ?`)) return
+    if (v.km_actuel && !v.km_actuel_approx && valeur < v.km_actuel && !confirm(`C'est moins que le dernier relevé (${fmtKm(v.km_actuel)}). Enregistrer quand même ?`)) return
     setEnvoi(true)
     await supabase.from('mileage_readings').insert({ vehicle_id: v.id, km: valeur })
     setEnvoi(false)
@@ -118,7 +121,7 @@ function CarteVoiture({ voiture: v, onKm }) {
           <p className="mt-1 truncate font-medium">
             {[v.marque, v.modele].filter(Boolean).join(' ') || 'Modèle non renseigné'}
           </p>
-          <p className="text-sm text-slate-500">{fmtKm(v.km_actuel)}</p>
+          <p className="text-sm text-slate-500">{fmtKmApprox(v.km_actuel, v.km_actuel_approx)}</p>
         </Link>
         <Link
           to={`/voiture/${v.id}/panne`}

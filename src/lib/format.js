@@ -49,3 +49,18 @@ export function normaliserPlaque(p) {
 }
 
 export const nomPersonne = (profil) => profil?.prenom || profil?.email?.split('@')[0] || 'Quelqu’un'
+
+/** Date d'il y a n mois (ISO). */
+export function ilYa(mois) {
+  const d = new Date(aujourdhui() + 'T12:00:00')
+  d.setMonth(d.getMonth() - mois)
+  return d.toISOString().slice(0, 10)
+}
+
+/** « ~ mars 2025 » pour une date approximative, sinon la date exacte. */
+export function fmtDateApprox(d, approx) {
+  if (!d || !approx) return fmtDate(d)
+  return '~ ' + new Date(d.slice(0, 10) + 'T12:00:00').toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })
+}
+
+export const fmtKmApprox = (km, approx) => (km == null ? '—' : `${approx ? '~' : ''}${fmtKm(km)}`)

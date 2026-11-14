@@ -3,8 +3,8 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase, q } from '../lib/supabase.js'
 import { chargerGarages } from '../lib/donnees.js'
 import { envoyerFichier } from '../lib/images.js'
-import { TYPES_INTERVENTION } from '../lib/constantes.js'
-import { aujourdhui, fmtDate } from '../lib/format.js'
+import { IL_Y_A, TYPES_INTERVENTION } from '../lib/constantes.js'
+import { aujourdhui, fmtDate, ilYa } from '../lib/format.js'
 import { analyserFacture, analyserPV } from '../lib/analyse.js'
 import LecturePapier, { classeLu } from '../components/LecturePapier.jsx'
 import { Bouton, Carte, Champ, Chargement, Erreur, Input, classeInput } from '../components/ui.jsx'
@@ -17,7 +17,7 @@ export default function Ajout() {
   const [type, setType] = useState(() => TYPES_INTERVENTION.find((t) => t.code === params.get('type')) ?? null)
 
   useEffect(() => {
-    q(supabase.from('vehicles').select('id, plaque, marque, modele, km_actuel, garage_habituel_id').eq('archivee', false).order('created_at'))
+    q(supabase.from('vehicles').select('id, plaque, marque, modele, km_actuel, km_actuel_approx, garage_habituel_id').eq('archivee', false).order('created_at'))
       .then((liste) => {
         setVoitures(liste)
         if (liste.length === 1) setVoitureId((id) => id ?? liste[0].id)
@@ -87,7 +87,9 @@ function FormIntervention({ voiture, type, onRetour }) {
   const [garages, setGarages] = useState([])
   const [f, setF] = useState({
     date: aujourdhui(),
+    date_approx: false,
     km: voiture.km_actuel ?? '',
+    km_approx: Boolean(voiture.km_actuel_approx),
     cout: '',
     garage_id: voiture.garage_habituel_id ?? '',
     libelle: '',
@@ -131,20 +133,30 @@ function FormIntervention({ voiture, type, onRetour }) {
     setErreur(null)
     setEnvoi(true)
     try {
-      const eventId = crypto.randomUUID()
-      await q(
-        supabase.from('events').insert({
-          id: eventId,
-          vehicle_id: voiture.id,
-          type: type.code,
-          date: f.date,
-          km: f.km === '' ? null : parseInt(f.km, 10),
-          cout: f.cout === '' ? null : Number(String(f.cout).replace(',', '.')),
-          garage_id: f.garage_id || null,
-          libelle: f.libelle || null,
-          note: f.note || null,
-        }),
-      )
+      const champs = {
+        vehicle_id: voiture.id,
+        type: type.code,
+        date: f.date,
+        date_approx: f.date_approx,
+        km: f.km === '' ? null : parseInt(f.km, 10),
+        km_approx: f.km !== '' && f.km_approx,
+        cout: f.cout === '' ? null : Number(String(f.cout).replace(',', '.')),
+        garage_id: f.garage_id || null,
+        libelle: f.libelle || null,
+        note: f.note || null,
+      }
+      // une info exacte remplace l'approximation donnée plus tôt (« il y a ~1 an »)
+      const remplacee =
+        !f.date_approx && ['revision', 'controle_technique'].includes(type.code)
+          ? (
+              await q(
+                supabase.from('events').select('id').eq('vehicle_id', voiture.id).eq('type', type.code).eq('date_approx', true).limit(1),
+              )
+            )[0]
+          : null
+      const eventId = remplacee?.id ?? crypto.randomUUID()
+      if (remplacee) await q(supabase.from('events').update(champs).eq('id', eventId))
+      else await q(supabase.from('events').insert({ id: eventId, ...champs }))
       if (facture) {
         const chemin = await envoyerFichier(voiture.id, facture)
         const ct = type.code === 'controle_technique'
@@ -206,6 +218,8 @@ function FormIntervention({ voiture, type, onRetour }) {
           setF((s) => ({
             ...s,
             ...valeurs,
+            ...(valeurs.date ? { date_approx: false } : {}),
+            ...(valeurs.km ? { km_approx: false } : {}),
             note: contre_visite && date_limite ? `Contre-visite à faire avant le ${fmtDate(date_limite)}` : s.note,
           }))
           setLus(valeurs)
@@ -221,7 +235,13 @@ function FormIntervention({ voiture, type, onRetour }) {
         )}
         <div className="grid grid-cols-2 gap-3">
           <Champ label="Date">
-            <Input type="date" required value={f.date} onChange={maj('date')} className={classeLu(lus, 'date')} />
+            <Input
+              type="date"
+              required
+              value={f.date}
+              onChange={(e) => setF({ ...f, date: e.target.value, date_approx: false })}
+              className={classeLu(lus, 'date')}
+            />
           </Champ>
           <Champ label="Km">
             <Input
@@ -231,7 +251,26 @@ function FormIntervention({ voiture, type, onRetour }) {
               onChange={(e) => setF({ ...f, km: e.target.value.replace(/\D/g, '') })}
               className={classeLu(lus, 'km')}
             />
+            <span className="mt-1 flex items-center gap-2 text-sm text-slate-600">
+              <input type="checkbox" checked={f.km_approx} onChange={(e) => setF({ ...f, km_approx: e.target.checked })} className="h-4 w-4" />
+              environ
+            </span>
           </Champ>
+        </div>
+        <div className="-mt-1 flex flex-wrap gap-1.5">
+          {[{ mois: 0, label: 'Aujourd’hui' }, ...IL_Y_A.slice(0, 4)].map((r) => {
+            const actif = r.mois === 0 ? f.date === aujourdhui() && !f.date_approx : f.date_approx && f.date === ilYa(r.mois)
+            return (
+              <button
+                type="button"
+                key={r.mois}
+                onClick={() => setF({ ...f, date: r.mois ? ilYa(r.mois) : aujourdhui(), date_approx: r.mois > 0 })}
+                className={`rounded-full px-3 py-1 text-xs font-medium ${actif ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600'}`}
+              >
+                {r.label}
+              </button>
+            )
+          })}
         </div>
         {type.piece && (
           <div className="space-y-1">
