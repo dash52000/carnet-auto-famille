@@ -3,7 +3,7 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { supabase, q } from '../lib/supabase.js'
 import { chargerGarages, creerVoiture } from '../lib/donnees.js'
 import { envoyerFichier } from '../lib/images.js'
-import { lireTexte } from '../lib/ocr.js'
+import { dernierMoteur, lireTexte } from '../lib/ocr.js'
 import { analyserAttestation, analyserCarteGrise } from '../lib/analyse.js'
 import LecturePapier, { classeLu } from '../components/LecturePapier.jsx'
 import { normaliserPlaque } from '../lib/format.js'
@@ -195,6 +195,7 @@ function NouvelleVoiture() {
         <p className={`rounded-xl p-3 text-sm ${message.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>
           {message.ok ? '✓ ' : ''}
           {message.texte}
+          {dernierMoteur && <span className="block text-xs opacity-60">Lu avec {dernierMoteur}</span>}
         </p>
       )}
 

@@ -6,6 +6,9 @@
 
 const CACHE_MODELES = 'ocr-modeles-v1'
 
+/** Moteur utilisé pour la dernière lecture (affiché discrètement, utile pour comprendre un échec). */
+export let dernierMoteur = ''
+
 /** Télécharge un fichier de modèle une seule fois, puis le relit depuis le cache du navigateur. */
 async function telecharger(url) {
   const cache = await globalThis.caches?.open(CACHE_MODELES).catch(() => null)
@@ -132,7 +135,10 @@ async function lirePdf(fichier, onProgres) {
     onProgres((0.5 * p) / Math.min(doc.numPages, 3))
   }
   const texte = pages.join('\n')
-  if (texte.replace(/\s/g, '').length > 40) return texte
+  if (texte.replace(/\s/g, '').length > 40) {
+    dernierMoteur = 'texte du PDF'
+    return texte
+  }
 
   // PDF scanné (une image sans texte) : on dessine la 1re page et on la passe à l'OCR
   const page = await doc.getPage(1)
@@ -148,11 +154,15 @@ async function lirePdf(fichier, onProgres) {
 async function ocrImage(imagePaddle, imageTesseract, onProgres) {
   try {
     const texte = await lirePaddle(await imagePaddle(), onProgres)
-    if (texte && texte.replace(/\s/g, '').length >= 15) return texte
+    if (texte && texte.replace(/\s/g, '').length >= 15) {
+      dernierMoteur = 'PaddleOCR'
+      return texte
+    }
   } catch (e) {
     console.warn('PaddleOCR indisponible, repli sur Tesseract', e)
   }
   onProgres(0)
+  dernierMoteur = 'Tesseract (secours)'
   return tesseract(await imageTesseract(), onProgres)
 }
 

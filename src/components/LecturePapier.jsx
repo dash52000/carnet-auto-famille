@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { lireTexte } from '../lib/ocr.js'
+import { dernierMoteur, lireTexte } from '../lib/ocr.js'
 
 /**
  * Bouton « photo ou PDF d'un papier » : lit le document, appelle analyser(texte) puis onLu(fichier, champs).
@@ -55,6 +55,7 @@ export default function LecturePapier({ label, aide, analyser, onLu, attendus = 
         <p className={`rounded-xl p-2 text-sm ${message.ok ? 'bg-emerald-50 text-emerald-800' : 'bg-amber-50 text-amber-800'}`}>
           {message.ok ? '✓ ' : ''}
           {message.texte}
+          {dernierMoteur && <span className="block text-xs opacity-60">Lu avec {dernierMoteur}</span>}
         </p>
       )}
     </div>

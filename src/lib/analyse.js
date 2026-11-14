@@ -90,24 +90,25 @@ const nettoyer = (valeur) =>
 // fin d'une valeur = début du code suivant sur la même ligne (« D.2 », « J.1 », « E. »…).
 // L'OCR abîme souvent les codes (« D.1 » lu « DI », « D.3 » lu « P3 ») : on reste tolérant.
 const RE_CODE_SUIVANT = /\s+(?:[A-Z]\s?[.,]?\s?\d(?:\s?[.,]?\s?\d)?\b|[A-Z]\s?\.\s|E\s?[.,:]?\s+(?=[A-Z0-9]{10}))/
+const DS = '(?:^|\\s)D\\s?[.,]?\\s?' // « D. » bien lu
 const D = '(?:^|\\s)[DPO0]\\s?[.,]?\\s?' // « D. » et ses variantes mal lues
 const UN = '[1IL|]'
 
-/** Valeur qui suit un code (même ligne, sinon ligne suivante). */
-function valeurApres(lignes, reCode) {
-  for (let i = 0; i < lignes.length; i++) {
-    const m = lignes[i].match(reCode)
-    if (!m) continue
-    let reste = lignes[i].slice(m.index + m[0].length)
-    const coupe = reste.search(RE_CODE_SUIVANT)
-    if (coupe >= 0) reste = reste.slice(0, coupe)
-    let v = nettoyer(reste)
-    if (!v && lignes[i + 1] && !/^\s*[A-Z]\s?[.,]\s?\d?/.test(lignes[i + 1])) {
-      const suivante = lignes[i + 1]
-      const c = suivante.search(RE_CODE_SUIVANT)
-      v = nettoyer(c >= 0 ? suivante.slice(0, c) : suivante)
+/** Valeur qui suit un code (même ligne, sinon ligne suivante). Essaie les codes dans l'ordre (strict puis tolérant). */
+function valeurApres(lignes, ...codes) {
+  const couper = (texte) => {
+    const t = texte.trim()
+    const c = t.search(RE_CODE_SUIVANT) // un code ne peut pas être le 1er mot : c'est la valeur
+    return nettoyer(c >= 0 ? t.slice(0, c) : t)
+  }
+  for (const reCode of codes) {
+    for (let i = 0; i < lignes.length; i++) {
+      const m = lignes[i].match(reCode)
+      if (!m) continue
+      let v = couper(lignes[i].slice(m.index + m[0].length))
+      if (!v && lignes[i + 1] && !/^\s*[A-Z]\s?[.,]\s?\d?/.test(lignes[i + 1])) v = couper(lignes[i + 1])
+      if (v) return v
     }
-    if (v) return v
   }
   return ''
 }
@@ -127,7 +128,8 @@ function vinDepuis(brut) {
   if (s.length < 17) return ''
   const vin = s.slice(0, 17)
   const chiffres = (vin.match(/\d/g) || []).length
-  return chiffres >= 3 && chiffres < 17 ? vin : ''
+  // un VIN finit par 4 chiffres (numéro de série) et contient des lettres
+  return /\d{4}$/.test(vin) && chiffres < 17 ? vin : ''
 }
 
 function vinDe(lignes) {
@@ -155,6 +157,39 @@ function cnit(brut) {
   return s[0] + s.slice(1, 3).replace(/O/g, '0').replace(/[IL]/g, '1') + s.slice(3)
 }
 
+/**
+ * Bande codée en bas de la carte grise (2 lignes avec des « < »), imprimée pour être lue par une machine :
+ *   CRFRA + plaque (7) + contrôle + VIN (17) + contrôle + 1re immatriculation (AAMMJJ) + …
+ *   carrosserie (4) + marque <<< modèle <<< n° de formule
+ */
+function bandeCodee(lignes) {
+  const champs = {}
+  const compactes = lignes.map((l) => l.replace(/[^A-Z0-9<]/g, ''))
+  const i = compactes.findIndex((l) => /CRFRA/.test(l))
+  if (i < 0) return champs
+  const l1 = compactes[i].slice(compactes[i].indexOf('CRFRA') + 5)
+  // plaque SIV : 2 lettres, 3 chiffres, 2 lettres (on corrige O/0 et I/1 selon la position)
+  const p = l1.slice(0, 7)
+  const lettres = (t) => t.replace(/0/g, 'O').replace(/1/g, 'I')
+  const chiffres = (t) => t.replace(/O/g, '0').replace(/[IL]/g, '1')
+  const plaque = `${lettres(p.slice(0, 2))}-${chiffres(p.slice(2, 5))}-${lettres(p.slice(5, 7))}`
+  if (/^[A-Z]{2}-\d{3}-[A-Z]{2}$/.test(plaque)) champs.plaque = plaque
+  const vin = vinDepuis(l1.slice(8, 25))
+  if (vin) champs.vin = vin
+  const d = chiffres(l1.slice(26, 32))
+  if (/^\d{6}$/.test(d)) {
+    const aa = Number(d.slice(0, 2))
+    const annee = aa > ANNEE % 100 ? 1900 + aa : 2000 + aa
+    const iso = dateIso(d.slice(4, 6), d.slice(2, 4), String(annee), ANNEE)
+    if (iso) champs.date_1re_immat = iso
+  }
+  const l2 = compactes[i + 1] ?? ''
+  const morceaux = l2.slice(4).split(/<{2,}/).filter(Boolean)
+  if (morceaux.length >= 2 && /^[A-Z][A-Z<-]+$/.test(morceaux[0])) champs.marque = morceaux[0].replace(/</g, ' ')
+  if (morceaux.length >= 3 && /^[A-Z0-9][A-Z0-9<-]*$/.test(morceaux[1])) champs.modele = morceaux[1].replace(/</g, ' ')
+  return champs
+}
+
 /** Carte grise → plaque, date_1re_immat, marque, modele, vin, type_mine. */
 export function analyserCarteGrise(texteBrut) {
   const texte = normaliser(texteBrut)
@@ -173,14 +208,18 @@ export function analyserCarteGrise(texteBrut) {
   }
   if (!date) date = datesDe(texte).sort()[0] ?? ''
 
-  return garder({
+  const cases = garder({
     plaque: plaqueDe(texte),
     date_1re_immat: date,
-    marque: valeurApres(lignes, new RegExp(`${D}${UN}\\b\\.?`)),
-    modele: valeurApres(lignes, new RegExp(`${D}3\\b\\.?`)),
+    marque: valeurApres(lignes, new RegExp(`${DS}${UN}\\b\\.?`), new RegExp(`${D}${UN}\\b\\.?`)),
+    modele: valeurApres(lignes, new RegExp(`${DS}3\\b\\.?`), new RegExp(`${D}3\\b\\.?`)),
     vin: vinDe(lignes),
-    type_mine: cnit(valeurApres(lignes, new RegExp(`${D}2\\s?[.,]?\\s?${UN}\\b\\.?`))),
+    type_mine: cnit(
+      valeurApres(lignes, new RegExp(`${DS}2\\s?[.,]?\\s?${UN}\\b\\.?`), new RegExp(`${D}2\\s?[.,]?\\s?${UN}\\b\\.?`)),
+    ),
   })
+  // la bande codée est la source la plus fiable ; les cases (A, B, D.1…) complètent
+  return { ...cases, ...bandeCodee(lignes) }
 }
 
 const garder = (champs) => Object.fromEntries(Object.entries(champs).filter(([, v]) => v))
